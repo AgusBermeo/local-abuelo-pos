@@ -245,6 +245,11 @@ export default function Cobrar(props: {
             </div>
           ))
         )}
+        <div className="flex justify-end mt-4 gap-4 items-center">
+          {/* discounts */}
+          <h3 className="font-semibold text-md">Descuento </h3>
+          <input type="number" className="w-24 text-center bg-amber-900/30 border-2 border-amber-800 rounded-lg px-4 py-2.5 text-amber-100 text-sm focus:outline-none focus:border-amber-500" />
+        </div>
         <div className="mt-4 flex justify-between items-center">
           <h3 className="font-bold">TOTAL</h3>
           <h3 className="font-bold text-xl text-amber-500">${total.toFixed(2)}</h3>
