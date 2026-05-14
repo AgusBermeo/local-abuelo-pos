@@ -38,6 +38,7 @@ export default function Cobrar(props: {
   const [selectedRelleno, setSelectedRelleno] = useState<Record<number, string>>({});
   const [selectedSize, setSelectedSize] = useState<Record<number, string>>({});
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
+  const [discount, setDiscount] = useState<number>(0);
 
   const getPrice = (product: Product, sizeKey: string | null): number => {
     if (typeof product.price === 'object' && sizeKey) {
@@ -96,7 +97,9 @@ export default function Cobrar(props: {
     return orderItems.find(i => i.key === key)?.quantity ?? 0;
   };
 
-  const total = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const subtotal = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const discountAmount = Math.min(discount, subtotal);
+  const total = subtotal - discountAmount;
 
   const handleCobrar = () => {
     if (orderItems.length === 0) return;
@@ -115,12 +118,14 @@ export default function Cobrar(props: {
     setOrderItems([]);
     setSelectedRelleno({});
     setSelectedSize({});
+    setDiscount(0);
   };
 
   function clearCart() {
     setOrderItems([]);
     setSelectedSize({});
     setSelectedRelleno({});
+    setDiscount(0);
   }
 
   const ProductCard = ({ product }: { product: Product }) => {
@@ -246,14 +251,46 @@ export default function Cobrar(props: {
           ))
         )}
         <div className="flex justify-end mt-4 gap-4 items-center">
-          {/* discounts */}
-          <h3 className="font-semibold text-md">Descuento </h3>
-          <input type="number" className="w-24 text-center bg-amber-900/30 border-2 border-amber-800 rounded-lg px-4 py-2.5 text-amber-100 text-sm focus:outline-none focus:border-amber-500" />
+          <h3 className="font-semibold text-md">Descuento</h3>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500 text-sm font-bold">$</span>
+            <input
+              type="number"
+              min={0}
+              step={0.01}
+              value={discount === 0 ? "" : discount}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                setDiscount(isNaN(val) || val < 0 ? 0 : val);
+              }}
+              placeholder="0.00"
+              className="w-28 text-center pl-7 bg-amber-900/30 border-2 border-amber-800 rounded-lg px-4 py-2.5 text-amber-100 text-sm focus:outline-none focus:border-amber-500"
+            />
+          </div>
+          {discount > 0 && (
+            <span className="text-xs text-amber-600 font-semibold">
+              -{discount > subtotal ? subtotal.toFixed(2) : discount.toFixed(2)} aplicado
+            </span>
+          )}
         </div>
-        <div className="mt-4 flex justify-between items-center">
-          <h3 className="font-bold">TOTAL</h3>
-          <h3 className="font-bold text-xl text-amber-500">${total.toFixed(2)}</h3>
-        </div>
+        <div className="mt-4 flex flex-col gap-1">
+  {discount > 0 && (
+    <div className="flex justify-between items-center text-sm text-amber-700">
+      <span>Subtotal</span>
+      <span>${subtotal.toFixed(2)}</span>
+    </div>
+  )}
+  {discount > 0 && (
+    <div className="flex justify-between items-center text-sm text-amber-600">
+      <span>Descuento</span>
+      <span>-${discountAmount.toFixed(2)}</span>
+    </div>
+  )}
+  <div className="flex justify-between items-center">
+    <h3 className="font-bold">TOTAL</h3>
+    <h3 className="font-bold text-xl text-amber-500">${total.toFixed(2)}</h3>
+  </div>
+</div>
         <div className="flex gap-3">
           <button
             onClick={() => clearCart()}
