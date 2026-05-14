@@ -22,27 +22,55 @@ const INITIAL_PRODUCTS = [
   { id: 11, name: "Cerveza Pilsener", price: 2.5, category: "Bebida", size: "350ml"},
 ]
 
-export default function Home() {
+export type OrderItem = {
+  name: string;
+  quantity: number;
+  price: number;
+};
 
+export type Sale = {
+  id: number;
+  date: Date;
+  items: OrderItem[];
+  total: number;
+};
+
+export default function Home() {
   const [products, setProducts] = useState(INITIAL_PRODUCTS);
   const [activeTab, setActiveTab] = useState(0);
+  const [sales, setSales] = useState<Sale[]>([]);
+
+  const addSale = (items: OrderItem[], total: number) => {
+    const newSale: Sale = {
+      id: Date.now(),
+      date: new Date(),
+      items,
+      total,
+    };
+    setSales((prev) => [newSale, ...prev]);
+  };
+
+  const deleteSale = (id: number) => {
+    setSales((prev) => prev.filter((s) => s.id !== id));
+  };
+
   const foodProducts = products.filter((product) => product.category === "Comida");
   const drinkProducts = products.filter((product) => product.category === "Bebida");
-const TABS = [
-  {
-    label: "🛒 Cobrar",
-    content: <Cobrar foodProducts={foodProducts} drinkProducts={drinkProducts} />,
-  },
-  {
-    label: "📋 Ventas",
-    content: <Ventas />,
-  },
-  {
-    label: "📦 Inventario",
-    content: <Inventario products={products} />,
-  },
-]
 
+  const TABS = [
+    {
+      label: "🛒 Cobrar",
+      content: <Cobrar foodProducts={foodProducts} drinkProducts={drinkProducts} onSaleComplete={addSale} />,
+    },
+    {
+      label: "📋 Ventas",
+      content: <Ventas sales={sales} onDelete={deleteSale} />,
+    },
+    {
+      label: "📦 Inventario",
+      content: <Inventario products={products} />,
+    },
+  ];
 
   return (
     <div className="flex flex-col flex-1 min-h-dvh bg-amber-950/60 font-sans">

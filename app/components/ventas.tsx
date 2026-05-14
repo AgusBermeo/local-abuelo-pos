@@ -15,42 +15,6 @@ type Sale = {
   total: number;
 };
 
-const MOCK_SALES: Sale[] = [
-  {
-    id: 1,
-    date: new Date("2026-03-21T12:23:00"),
-    items: [
-      { name: "Empanada de Carne Grande", quantity: 1, price: 1.75 },
-      { name: "Gaseosa", quantity: 2, price: 3.0 },
-    ],
-    total: 4.75,
-  },
-  {
-    id: 2,
-    date: new Date("2026-03-20T08:12:00"),
-    items: [
-      { name: "Bandeja de 5 empanadas Normal", quantity: 1, price: 4.5 },
-      { name: "Café Pasado", quantity: 1, price: 1.25 },
-    ],
-    total: 5.75,
-  },
-  {
-    id: 3,
-    date: new Date("2026-03-19T18:38:00"),
-    items: [{ name: "Empanada de Pollo Bocadito", quantity: 2, price: 1.2 }],
-    total: 1.2,
-  },
-  {
-    id: 4,
-    date: new Date("2026-03-18T14:05:00"),
-    items: [
-      { name: "Bandeja de 10 empanadas Grande", quantity: 1, price: 8.5 },
-      { name: "Infusión de frutas deshidratadas", quantity: 1, price: 2.5 },
-    ],
-    total: 11.0,
-  },
-];
-
 function getEmoji(name: string) {
   if (name.toLowerCase().includes("empanada") || name.toLowerCase().includes("bandeja"))
     return "🥟";
@@ -62,9 +26,14 @@ function getEmoji(name: string) {
   return "🍽️";
 }
 
-export default function Ventas({ sales = MOCK_SALES }: { sales?: Sale[] }) {
+export default function Ventas({
+  sales,
+  onDelete,
+}: {
+  sales: Sale[];
+  onDelete: (id: number) => void;
+}) {
   const [filterDate, setFilterDate] = useState<string>("");
-  const [salesList, setSalesList] = useState<Sale[]>(sales);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -74,7 +43,7 @@ export default function Ventas({ sales = MOCK_SALES }: { sales?: Sale[] }) {
   currentMonth.setHours(0, 0, 0, 0);
 
   const filteredSales = filterDate
-    ? salesList.filter((s) => {
+    ? sales.filter((s) => {
         const d = new Date(s.date);
         const fd = new Date(filterDate);
         return (
@@ -83,19 +52,15 @@ export default function Ventas({ sales = MOCK_SALES }: { sales?: Sale[] }) {
           d.getDate() === fd.getDate()
         );
       })
-    : salesList;
+    : sales;
 
-  const todaySales = salesList.filter((s) => new Date(s.date) >= today);
+  const todaySales = sales.filter((s) => new Date(s.date) >= today);
   const todayRevenue = todaySales.reduce((acc, s) => acc + s.total, 0);
 
-  const monthSales = salesList.filter((s) => new Date(s.date) >= currentMonth);
+  const monthSales = sales.filter((s) => new Date(s.date) >= currentMonth);
   const monthRevenue = monthSales.reduce((acc, s) => acc + s.total, 0);
 
-  const totalRevenue = salesList.reduce((acc, s) => acc + s.total, 0);
-
-  const handleDelete = (id: number) => {
-    setSalesList((prev) => prev.filter((s) => s.id !== id));
-  };
+  const totalRevenue = sales.reduce((acc, s) => acc + s.total, 0);
 
   const monthName = new Date().toLocaleDateString("es-EC", {
     month: "long",
@@ -135,7 +100,7 @@ export default function Ventas({ sales = MOCK_SALES }: { sales?: Sale[] }) {
         </div>
         <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4">
           <p className="text-[10px] uppercase text-yellow-700 tracking-widest mb-1">Total Global</p>
-          <p className="text-2xl font-bold text-purple-400">{salesList.length}</p>
+          <p className="text-2xl font-bold text-purple-400">{sales.length}</p>
           <p className="text-[10px] uppercase text-yellow-700 tracking-widest mt-2 mb-0.5">Recaudado</p>
           <p className="text-lg font-bold text-purple-400">${totalRevenue.toFixed(2)}</p>
         </div>
@@ -143,7 +108,11 @@ export default function Ventas({ sales = MOCK_SALES }: { sales?: Sale[] }) {
 
       {/* Sales list */}
       <div className="flex flex-col gap-3">
-        {filteredSales.length === 0 ? (
+        {sales.length === 0 ? (
+          <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-6 text-center text-amber-700 text-sm">
+            Aún no hay ventas registradas. ¡Cobra tu primer pedido!
+          </div>
+        ) : filteredSales.length === 0 ? (
           <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-6 text-center text-amber-700 text-sm">
             No hay ventas para la fecha seleccionada.
           </div>
@@ -173,7 +142,7 @@ export default function Ventas({ sales = MOCK_SALES }: { sales?: Sale[] }) {
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-amber-400">${sale.total.toFixed(2)}</span>
                   <button
-                    onClick={() => handleDelete(sale.id)}
+                    onClick={() => onDelete(sale.id)}
                     className="w-8 h-8 flex items-center justify-center rounded-md border-2 border-amber-600 hover:bg-amber-800 text-amber-500 transition-colors cursor-pointer"
                   >
                     <svg

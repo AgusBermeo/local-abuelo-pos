@@ -13,7 +13,7 @@ type Product = {
 }
 
 type OrderItem = {
-  key: string;       // unique: productId + size + relleno
+  key: string;
   productId: number;
   name: string;
   size: string | null;
@@ -24,7 +24,17 @@ type OrderItem = {
   quantity: number;
 }
 
-export default function Cobrar(props: { foodProducts: Product[], drinkProducts: Product[] }) {
+type SaleItem = {
+  name: string;
+  quantity: number;
+  price: number;
+};
+
+export default function Cobrar(props: {
+  foodProducts: Product[];
+  drinkProducts: Product[];
+  onSaleComplete: (items: SaleItem[], total: number) => void;
+}) {
   const [selectedRelleno, setSelectedRelleno] = useState<Record<number, string>>({});
   const [selectedSize, setSelectedSize] = useState<Record<number, string>>({});
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
@@ -40,7 +50,6 @@ export default function Cobrar(props: { foodProducts: Product[], drinkProducts: 
     const sizeKey = typeof product.size === 'object' ? (selectedSize[product.id] || null) : null;
     const rellenoKey = product.relleno ? (selectedRelleno[product.id] || null) : null;
 
-    // If product has sizes but none selected, do nothing
     if (typeof product.size === 'object' && !sizeKey) return;
 
     const sizeLabel = sizeKey && typeof product.size === 'object'
@@ -88,6 +97,31 @@ export default function Cobrar(props: { foodProducts: Product[], drinkProducts: 
   };
 
   const total = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  const handleCobrar = () => {
+    if (orderItems.length === 0) return;
+
+    const saleItems: SaleItem[] = orderItems.map((item) => {
+      const parts = [item.sizeLabel, item.rellenoLabel].filter(Boolean);
+      const fullName = parts.length > 0 ? `${item.name} ${parts.join(" · ")}` : item.name;
+      return {
+        name: fullName,
+        quantity: item.quantity,
+        price: item.price,
+      };
+    });
+
+    props.onSaleComplete(saleItems, total);
+    setOrderItems([]);
+    setSelectedRelleno({});
+    setSelectedSize({});
+  };
+
+  function clearCart() {
+    setOrderItems([]);
+    setSelectedSize({});
+    setSelectedRelleno({});
+  }
 
   const ProductCard = ({ product }: { product: Product }) => {
     const count = getItemCount(product);
@@ -214,6 +248,23 @@ export default function Cobrar(props: { foodProducts: Product[], drinkProducts: 
         <div className="mt-4 flex justify-between items-center">
           <h3 className="font-bold">TOTAL</h3>
           <h3 className="font-bold text-xl text-amber-500">${total.toFixed(2)}</h3>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={() => clearCart()}
+            className="mt-4 w-full bg-red-600 hover:bg-red-500 text-white py-3 px-4 rounded-lg font-bold cursor-pointer transition-colors"
+          >Cancelar Pedido</button>
+          <button
+            onClick={handleCobrar}
+            disabled={orderItems.length === 0}
+            className={`mt-4 w-full py-3 rounded-lg font-bold uppercase tracking-widest text-sm transition-colors ${
+              orderItems.length > 0
+                ? "bg-amber-500 hover:bg-amber-400 text-amber-950 cursor-pointer"
+                : "bg-amber-900/40 text-amber-800 cursor-not-allowed"
+            }`}
+          >
+            💰 Cobrar ${total.toFixed(2)}
+          </button>
         </div>
       </div>
     </div>
