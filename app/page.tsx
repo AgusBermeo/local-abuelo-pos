@@ -7,6 +7,7 @@ import Ventas from "./components/ventas";
 import Inventario from "./components/inventario";
 
 import { useState } from "react";
+import { useLocalStorage } from "./hooks/useLocalStorage";
 
 const INITIAL_PRODUCTS = [
   { id: 1, name: "Empanada", price: { grande: 1.75, normal: 1.5, bocadito: 0.6 }, category: "Comida", size: { grande: "Grande", normal: "Normal", bocadito: "Bocadito"}, relleno: {carne: "Carne", pollo: "Pollo"}},
@@ -36,9 +37,9 @@ export type Sale = {
 };
 
 export default function Home() {
-  const [products, setProducts] = useState(INITIAL_PRODUCTS);
+  const [products, setProducts] = useLocalStorage('abuelo-products', INITIAL_PRODUCTS);
   const [activeTab, setActiveTab] = useState(0);
-  const [sales, setSales] = useState<Sale[]>([]);
+  const [sales, setSales] = useLocalStorage<Sale[]>('abuelo-sales', []);
 
   const addSale = (items: OrderItem[], total: number) => {
     const newSale: Sale = {
