@@ -274,40 +274,42 @@ export default function Cobrar(props: {
           )}
         </div>
         <div className="mt-4 flex flex-col gap-1">
-  {discount > 0 && (
-    <div className="flex justify-between items-center text-sm text-amber-700">
-      <span>Subtotal</span>
-      <span>${subtotal.toFixed(2)}</span>
-    </div>
-  )}
-  {discount > 0 && (
-    <div className="flex justify-between items-center text-sm text-amber-600">
-      <span>Descuento</span>
-      <span>-${discountAmount.toFixed(2)}</span>
-    </div>
-  )}
-  <div className="flex justify-between items-center">
-    <h3 className="font-bold">TOTAL</h3>
-    <h3 className="font-bold text-xl text-amber-500">${total.toFixed(2)}</h3>
-  </div>
-</div>
-        <div className="flex gap-3">
-          <button
-            onClick={() => clearCart()}
-            className="mt-4 w-full bg-red-600 hover:bg-red-500 text-white py-3 px-4 rounded-lg font-bold cursor-pointer transition-colors"
-          >Cancelar Pedido</button>
-          <button
-            onClick={handleCobrar}
-            disabled={orderItems.length === 0}
-            className={`mt-4 w-full py-3 rounded-lg font-bold uppercase tracking-widest text-sm transition-colors ${
-              orderItems.length > 0
-                ? "bg-amber-500 hover:bg-amber-400 text-amber-950 cursor-pointer"
-                : "bg-amber-900/40 text-amber-800 cursor-not-allowed"
-            }`}
-          >
-            💰 Cobrar ${total.toFixed(2)}
-          </button>
+        {discount > 0 && (
+          <div className="flex justify-between items-center text-sm text-amber-700">
+            <span>Subtotal</span>
+            <span>${subtotal.toFixed(2)}</span>
+          </div>
+        )}
+        {discount > 0 && (
+          <div className="flex justify-between items-center text-sm text-amber-600">
+            <span>Descuento</span>
+            <span>-${discountAmount.toFixed(2)}</span>
+          </div>
+        )}
+        <div className="flex justify-between items-center">
+          <h3 className="font-bold">TOTAL</h3>
+          <h3 className="font-bold text-xl text-amber-500">${total.toFixed(2)}</h3>
         </div>
+      </div>
+        {orderItems.length > 0 && (
+          <div className="flex gap-3">
+            <button
+              onClick={() => clearCart()}
+              className="mt-4 w-full bg-red-600 hover:bg-red-500 text-white py-3 px-4 rounded-lg font-bold cursor-pointer transition-colors"
+            >Cancelar Pedido</button>
+            <button
+              onClick={handleCobrar}
+              disabled={orderItems.length === 0}
+              className={`mt-4 w-full py-3 rounded-lg font-bold uppercase tracking-widest text-sm transition-colors ${
+                orderItems.length > 0
+                  ? "bg-amber-500 hover:bg-amber-400 text-amber-950 cursor-pointer"
+                  : "bg-amber-900/40 text-amber-800 cursor-not-allowed"
+              }`}
+            >
+              💰 Cobrar ${total.toFixed(2)}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

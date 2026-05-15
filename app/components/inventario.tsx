@@ -201,7 +201,7 @@ export default function Inventario({
               </div>
               {product.relleno && (
                 <p className="text-xs mb-1 uppercase text-gray-200">
-                  {Object.values(product.relleno).join(", ")}
+                  {Object.values(product.relleno).join(" · ")}
                 </p>
               )}
               <div className="flex gap-4 flex-wrap">
