@@ -26,6 +26,28 @@ function getEmoji(name: string) {
   return "🍽️";
 }
 
+function toLocalDateString(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function formatMonthLabel(startDate: Date, endDate: Date): string {
+  const startMonth = startDate.getMonth();
+  const startYear = startDate.getFullYear();
+  const endMonth = endDate.getMonth();
+  const endYear = endDate.getFullYear();
+
+  const startLabel = startDate.toLocaleDateString("es-EC", { month: "long", year: "numeric" });
+  const endLabel = endDate.toLocaleDateString("es-EC", { month: "long", year: "numeric" });
+
+  if (startMonth === endMonth && startYear === endYear) {
+    return startLabel;
+  }
+  return `${startLabel} – ${endLabel}`;
+}
+
 export default function Ventas({
   sales,
   onDelete,
@@ -33,71 +55,156 @@ export default function Ventas({
   sales: Sale[];
   onDelete: (id: number) => void;
 }) {
-  const [filterDate, setFilterDate] = useState<string>("");
+  const todayStr = toLocalDateString(new Date());
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const setToday = () => {
+    setStartDate(todayStr);
+    setEndDate(todayStr);
+  };
 
-  const currentMonth = new Date();
-  currentMonth.setDate(1);
-  currentMonth.setHours(0, 0, 0, 0);
+  const clearFilter = () => {
+    setStartDate("");
+    setEndDate("");
+  };
 
-  const filteredSales = filterDate
-    ? sales.filter((s) => {
-        const d = new Date(s.date);
-        const fd = new Date(filterDate);
-        return (
-          d.getFullYear() === fd.getFullYear() &&
-          d.getMonth() === fd.getMonth() &&
-          d.getDate() === fd.getDate()
-        );
-      })
-    : sales;
+  // Sales filtered by selected range (for the list)
+  const filteredSales = (() => {
+    if (!startDate && !endDate) return sales;
+    return sales.filter((s) => {
+      const d = toLocalDateString(new Date(s.date));
+      if (startDate && endDate) return d >= startDate && d <= endDate;
+      if (startDate) return d >= startDate;
+      if (endDate) return d <= endDate;
+      return true;
+    });
+  })();
 
-  const todaySales = sales.filter((s) => new Date(s.date) >= today);
-  const todayRevenue = todaySales.reduce((acc, s) => acc + s.total, 0);
+  // Stats: range block
+  const rangeStart = startDate ? new Date(startDate + "T00:00:00") : null;
+  const rangeEnd = endDate ? new Date(endDate + "T23:59:59") : null;
 
-  const monthSales = sales.filter((s) => new Date(s.date) >= currentMonth);
-  const monthRevenue = monthSales.reduce((acc, s) => acc + s.total, 0);
+  const rangeSales = (() => {
+    if (!rangeStart && !rangeEnd) return sales;
+    return sales.filter((s) => {
+      const d = new Date(s.date);
+      if (rangeStart && rangeEnd) return d >= rangeStart && d <= rangeEnd;
+      if (rangeStart) return d >= rangeStart;
+      if (rangeEnd) return d <= rangeEnd;
+      return true;
+    });
+  })();
+  const rangeRevenue = rangeSales.reduce((acc, s) => acc + s.total, 0);
 
+  // Stats: month(s) block — based on selected range
+  const monthSalesFiltered = (() => {
+    if (!rangeStart && !rangeEnd) {
+      // Default: current month
+      const currentMonth = new Date();
+      currentMonth.setDate(1);
+      currentMonth.setHours(0, 0, 0, 0);
+      return sales.filter((s) => new Date(s.date) >= currentMonth);
+    }
+    // Use same range as selected
+    return rangeSales;
+  })();
+  const monthRevenue = monthSalesFiltered.reduce((acc, s) => acc + s.total, 0);
+
+  const monthLabel = (() => {
+    if (!rangeStart && !rangeEnd) {
+      return new Date().toLocaleDateString("es-EC", { month: "long", year: "numeric" });
+    }
+    const start = rangeStart ?? (rangeSales.length > 0 ? new Date(rangeSales[rangeSales.length - 1].date) : new Date());
+    const end = rangeEnd ?? new Date();
+    return formatMonthLabel(start, end);
+  })();
+
+  // Stats: global
   const totalRevenue = sales.reduce((acc, s) => acc + s.total, 0);
 
-  const monthName = new Date().toLocaleDateString("es-EC", {
-    month: "long",
-    year: "numeric",
-  });
+  const rangeLabel = (() => {
+    if (!startDate && !endDate) return "Total Global";
+    if (startDate === endDate && startDate) {
+      return new Date(startDate + "T00:00:00").toLocaleDateString("es-EC", {
+        day: "numeric", month: "long", year: "numeric",
+      });
+    }
+    const s = startDate ? new Date(startDate + "T00:00:00").toLocaleDateString("es-EC", { day: "numeric", month: "short", year: "numeric" }) : "…";
+    const e = endDate ? new Date(endDate + "T00:00:00").toLocaleDateString("es-EC", { day: "numeric", month: "short", year: "numeric" }) : "…";
+    return `${s} – ${e}`;
+  })();
+
+  const hasFilter = startDate || endDate;
 
   return (
     <div className="flex flex-col gap-4 w-full max-w-4xl mx-auto">
-      {/* Date filter */}
-      <div className="flex flex-col gap-1">
+      {/* Date range filter */}
+      <div className="flex flex-col gap-2">
         <label className="text-xs uppercase text-yellow-700 tracking-widest">
-          Filtrar por fecha
+          Filtrar por rango de fechas
         </label>
-        <input
-          type="date"
-          value={filterDate}
-          onChange={(e) => setFilterDate(e.target.value)}
-          className="bg-amber-950/60 border-2 border-amber-800 rounded-lg px-4 py-2.5 text-amber-100 text-sm focus:outline-none focus:border-amber-500 cursor-pointer w-full max-w-sm"
-        />
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase text-yellow-700 tracking-widest">Desde</span>
+            <input
+              type="date"
+              value={startDate}
+              max={endDate || undefined}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="bg-amber-950/60 border-2 border-amber-800 rounded-lg px-4 py-2.5 text-amber-100 text-sm focus:outline-none focus:border-amber-500 cursor-pointer"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase text-yellow-700 tracking-widest">Hasta</span>
+            <input
+              type="date"
+              value={endDate}
+              min={startDate || undefined}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="bg-amber-950/60 border-2 border-amber-800 rounded-lg px-4 py-2.5 text-amber-100 text-sm focus:outline-none focus:border-amber-500 cursor-pointer"
+            />
+          </div>
+          <button
+            onClick={setToday}
+            className="py-2.5 px-4 bg-amber-700 hover:bg-amber-600 border-2 border-amber-700 hover:border-amber-600 text-amber-100 text-xs font-bold rounded-lg uppercase tracking-widest cursor-pointer transition-colors"
+          >
+            Hoy
+          </button>
+          {hasFilter && (
+            <button
+              onClick={clearFilter}
+              className="py-2.5 px-4 bg-amber-900/50 hover:bg-amber-800 border-2 border-amber-800 text-amber-500 text-xs font-bold rounded-lg uppercase tracking-widest cursor-pointer transition-colors"
+            >
+              Limpiar
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
+        {/* Block 1: selected range (or all-time if no filter) */}
         <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4">
-          <p className="text-[10px] uppercase text-yellow-700 tracking-widest mb-1">Hoy</p>
-          <p className="text-2xl font-bold text-amber-400">{todaySales.length}</p>
-          <p className="text-[10px] uppercase text-yellow-700 tracking-widest mt-2 mb-0.5">Recaudado</p>
-          <p className="text-lg font-bold text-amber-400">${todayRevenue.toFixed(2)}</p>
-        </div>
-        <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4">
-          <p className="text-[10px] uppercase text-yellow-700 tracking-widest mb-1 capitalize">
-            Mes · {monthName}
+          <p className="text-[10px] uppercase text-yellow-700 tracking-widest mb-1 capitalize leading-tight">
+            {rangeLabel}
           </p>
-          <p className="text-2xl font-bold text-yellow-500">{monthSales.length}</p>
+          <p className="text-2xl font-bold text-amber-400">{rangeSales.length}</p>
+          <p className="text-[10px] uppercase text-yellow-700 tracking-widest mt-2 mb-0.5">Recaudado</p>
+          <p className="text-lg font-bold text-amber-400">${rangeRevenue.toFixed(2)}</p>
+        </div>
+
+        {/* Block 2: month(s) */}
+        <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4">
+          <p className="text-[10px] uppercase text-yellow-700 tracking-widest mb-1 capitalize leading-tight">
+            {monthLabel}
+          </p>
+          <p className="text-2xl font-bold text-yellow-500">{monthSalesFiltered.length}</p>
           <p className="text-[10px] uppercase text-yellow-700 tracking-widest mt-2 mb-0.5">Recaudado</p>
           <p className="text-lg font-bold text-yellow-500">${monthRevenue.toFixed(2)}</p>
         </div>
+
+        {/* Block 3: global total */}
         <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4">
           <p className="text-[10px] uppercase text-yellow-700 tracking-widest mb-1">Total Global</p>
           <p className="text-2xl font-bold text-purple-400">{sales.length}</p>
@@ -114,7 +221,7 @@ export default function Ventas({
           </div>
         ) : filteredSales.length === 0 ? (
           <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-6 text-center text-amber-700 text-sm">
-            No hay ventas para la fecha seleccionada.
+            No hay ventas para el rango de fechas seleccionado.
           </div>
         ) : (
           filteredSales.map((sale) => (

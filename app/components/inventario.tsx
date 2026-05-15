@@ -11,7 +11,7 @@ export default function Inventario(props: { products: Product[] }) {
 
     const deleteProduct = (id: number) => {
         console.log("Product deleted " + id);
-        
+
     }
 
     return (
@@ -46,16 +46,16 @@ export default function Inventario(props: { products: Product[] }) {
                                 </button>
                             </div>
                         </div>
-                        <p className="text-xs mb-1 uppercase text-gray-200">{product.relleno ? Object.values(product.relleno).join(", ") : ""}</p>
-                        <div className="flex gap-4">
+                        <p className="text-xs mb-1 uppercase text-gray-200">{product.relleno ? Object.values(product.relleno).join(" · ") : ""}</p>
+                        <div className="flex gap-5">
                             {typeof product.price === 'object' ? Object.entries(product.price).map(([size, price]) => (
                                 <div key={size} className="flex flex-col gap-1">
-                                    <h3 className="text-[10px] text-yellow-700 uppercase">{size}: </h3>
+                                    <h3 className="text-[10px] text-yellow-700 uppercase">{size} </h3>
                                     <p className="font-bold text-amber-500">${ (price as number).toFixed(2) }</p>
                                 </div>
                             )) : (
                                 <div className="flex flex-col gap-1">
-                                    <h3 className="text-[10px] text-yellow-700 uppercase">Precio: </h3>
+                                    <h3 className="text-[10px] text-yellow-700 uppercase">Precio </h3>
                                     <p className="font-bold text-amber-500">${ (product.price as number).toFixed(2) }</p>
                                 </div>
                             )}
