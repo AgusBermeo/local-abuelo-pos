@@ -54,6 +54,14 @@ export default function Home() {
     setSales((prev) => prev.filter((s) => s.id !== id));
   };
 
+  const addProduct = (product: (typeof INITIAL_PRODUCTS)[number]) => {
+    setProducts((prev) => [...prev, product]);
+  };
+ 
+  const deleteProduct = (id: number) => {
+    setProducts((prev) => prev.filter((p) => p.id !== id));
+  };
+
   const foodProducts = products.filter((product) => product.category === "Comida");
   const drinkProducts = products.filter((product) => product.category === "Bebida");
 
@@ -68,7 +76,7 @@ export default function Home() {
     },
     {
       label: "📦 Inventario",
-      content: <Inventario products={products} />,
+      content: <Inventario products={products} onAddProduct={addProduct} onDeleteProduct={deleteProduct} />,
     },
   ];
 
