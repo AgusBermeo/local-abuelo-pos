@@ -34,6 +34,7 @@ export type Sale = {
   date: Date;
   items: OrderItem[];
   total: number;
+  status: "pending" | "delivered";
 };
 
 export default function Home() {
@@ -47,6 +48,7 @@ export default function Home() {
       date: new Date(),
       items,
       total,
+      status: "pending",
     };
     setSales((prev) => [newSale, ...prev]);
   };
@@ -63,6 +65,12 @@ export default function Home() {
     setProducts((prev) => prev.filter((p) => p.id !== id));
   };
 
+  const markDelivered = (id: number) => {
+    setSales((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, status: "delivered" } : s))
+    );
+  };
+
   const foodProducts = products.filter((product) => product.category === "Comida");
   const drinkProducts = products.filter((product) => product.category === "Bebida");
 
@@ -73,7 +81,7 @@ export default function Home() {
     },
     {
       label: "📋 Ventas",
-      content: <Ventas sales={sales} onDelete={deleteSale} />,
+      content: <Ventas sales={sales} onDelete={deleteSale} onMarkDelivered={markDelivered} />,
     },
     {
       label: "📦 Inventario",

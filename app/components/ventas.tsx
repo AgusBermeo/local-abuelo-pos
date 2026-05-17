@@ -13,6 +13,7 @@ type Sale = {
   date: Date;
   items: OrderItem[];
   total: number;
+  status: "pending" | "delivered";
 };
 
 function getEmoji(name: string) {
@@ -51,9 +52,11 @@ function formatMonthLabel(startDate: Date, endDate: Date): string {
 export default function Ventas({
   sales,
   onDelete,
+  onMarkDelivered,
 }: {
   sales: Sale[];
   onDelete: (id: number) => void;
+  onMarkDelivered: (id: number) => void;
 }) {
   const todayStr = toLocalDateString(new Date());
   const [startDate, setStartDate] = useState<string>("");
@@ -260,6 +263,26 @@ export default function Ventas({
                     </svg>
                   </button>
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between mt-1 mb-2">
+                {sale.status === "delivered" ? (
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-green-400 bg-green-900/30 border border-green-700 rounded-full px-3 py-1">
+                    ✅ Entregado
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-yellow-400 bg-yellow-900/30 border border-yellow-700 rounded-full px-3 py-1">
+                    🕐 Pendiente
+                  </span>
+                )}
+                {(!sale.status || sale.status === "pending") && (
+                  <button
+                    onClick={() => onMarkDelivered(sale.id)}
+                    className="text-xs font-bold uppercase tracking-widest py-1.5 px-4 rounded-full bg-green-800 hover:bg-green-700 text-green-100 cursor-pointer transition-colors border border-green-700"
+                  >
+                    Marcar Entregado
+                  </button>
+                )}
               </div>
 
               <div className="flex flex-col gap-1">
