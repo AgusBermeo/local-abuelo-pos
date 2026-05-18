@@ -113,31 +113,55 @@ const rangeRevenue = rangeSales.reduce((acc, s) => acc + s.total, 0);
 const rangeEnd = endDate ? new Date(endDate + "T23:59:59") : null;
 
 const monthSalesFiltered = (() => {
-  if (!rangeStart && !rangeEnd) {
-    const currentMonth = new Date();
-    currentMonth.setDate(1);
-    currentMonth.setHours(0, 0, 0, 0);
-    return sales.filter((s) => new Date(s.date) >= currentMonth);
+  if (!startDate && !endDate) {
+    // Mes actual completo
+    const now = new Date();
+    return sales.filter((s) => {
+      const d = new Date(s.date);
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    });
   }
+
+  // Recopilar todos los año-mes únicos que toca el rango
+  const months = new Set<string>();
+  const cursor = new Date((startDate || endDate!) + "T00:00:00");
+  const end = new Date((endDate || startDate!) + "T00:00:00");
+
+  while (cursor <= end) {
+    months.add(`${cursor.getFullYear()}-${cursor.getMonth()}`);
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
   return sales.filter((s) => {
     const d = new Date(s.date);
-    if (rangeStart && rangeEnd) return d >= rangeStart && d <= rangeEnd;
-    if (rangeStart) return d >= rangeStart;
-    if (rangeEnd) return d <= rangeEnd;
-    return true;
+    return months.has(`${d.getFullYear()}-${d.getMonth()}`);
   });
 })();
 
-  const monthRevenue = monthSalesFiltered.reduce((acc, s) => acc + s.total, 0);
+const monthRevenue = monthSalesFiltered.reduce((acc, s) => acc + s.total, 0);
 
-  const monthLabel = (() => {
-    if (!rangeStart && !rangeEnd) {
-      return new Date().toLocaleDateString("es-EC", { month: "long", year: "numeric" });
-    }
-    const start = rangeStart ?? (rangeSales.length > 0 ? new Date(rangeSales[rangeSales.length - 1].date) : new Date());
-    const end = rangeEnd ?? new Date();
-    return formatMonthLabel(start, end);
-  })();
+const monthLabel = (() => {
+  if (!startDate && !endDate) {
+    return new Date().toLocaleDateString("es-EC", { month: "long", year: "numeric" });
+  }
+
+  const start = new Date((startDate || endDate!) + "T00:00:00");
+  const end = new Date((endDate || startDate!) + "T00:00:00");
+
+  if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
+    // Mismo mes
+    return start.toLocaleDateString("es-EC", { month: "long", year: "numeric" });
+  }
+
+  // Múltiples meses: "abril – mayo 2025" o "dic 2024 – ene 2025"
+  const startLabel = start.toLocaleDateString("es-EC", {
+    month: "long",
+    ...(start.getFullYear() !== end.getFullYear() ? { year: "numeric" } : {}),
+  });
+  const endLabel = end.toLocaleDateString("es-EC", { month: "long", year: "numeric" });
+  return `${startLabel} – ${endLabel}`;
+})();
+
 
   const totalRevenue = sales.reduce((acc, s) => acc + s.total, 0);
 
