@@ -47,6 +47,15 @@ export default function Cobrar(props: {
     return typeof product.price === 'number' ? product.price : 0;
   };
 
+  // Returns only size entries whose price is > 0
+  const getAvailableSizes = (product: Product): [string, string][] => {
+    if (typeof product.size !== 'object' || typeof product.price !== 'object') return [];
+    return Object.entries(product.size as Record<string, string>).filter(([key]) => {
+      const price = (product.price as Record<string, number>)[key];
+      return typeof price === 'number' && price > 0;
+    });
+  };
+
   const addToOrder = (product: Product) => {
     const sizeKey = typeof product.size === 'object' ? (selectedSize[product.id] || null) : null;
     const rellenoKey = product.relleno ? (selectedRelleno[product.id] || null) : null;
@@ -54,7 +63,7 @@ export default function Cobrar(props: {
     if (typeof product.size === 'object' && !sizeKey) return;
 
     const sizeLabel = sizeKey && typeof product.size === 'object'
-      ? product.size[sizeKey as keyof typeof product.size]
+      ? (product.size as Record<string, string>)[sizeKey]
       : typeof product.size === 'string' ? product.size : null;
 
     const rellenoLabel = rellenoKey && product.relleno
@@ -134,6 +143,7 @@ export default function Cobrar(props: {
     const rellenoKey = selectedRelleno[product.id];
     const price = getPrice(product, sizeKey ?? null);
     const hasSize = typeof product.size === 'object';
+    const availableSizes = hasSize ? getAvailableSizes(product) : [];
     const canAdd = !hasSize || !!sizeKey;
 
     return (
@@ -155,7 +165,7 @@ export default function Cobrar(props: {
           )}
           <div className="flex items-center gap-2">
             {hasSize ? (
-              Object.entries(product.size as object).map(([key, value]) => (
+              availableSizes.map(([key, value]) => (
                 <button
                   key={key}
                   onClick={() => setSelectedSize(prev => ({ ...prev, [product.id]: key }))}

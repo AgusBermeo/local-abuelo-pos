@@ -13,7 +13,7 @@ type Sale = {
   date: Date;
   items: OrderItem[];
   total: number;
-  status: "pending" | "delivered";
+  status?: "pending" | "delivered";
 };
 
 function getEmoji(name: string) {
@@ -53,16 +53,23 @@ export default function Ventas({
   sales,
   onDelete,
   onMarkDelivered,
+  onUnmarkDelivered,
 }: {
   sales: Sale[];
   onDelete: (id: number) => void;
   onMarkDelivered: (id: number) => void;
+  onUnmarkDelivered: (id: number) => void;
 }) {
   const todayStr = toLocalDateString(new Date());
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [deleteTarget, setDeleteTarget] = useState<Sale | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+
+  // Unmark (revert to pending) confirmation — two-step
+  const [unmarkTarget, setUnmarkTarget] = useState<Sale | null>(null);
+  const [unmarkStep, setUnmarkStep] = useState<1 | 2>(1);
+  const [unmarkConfirmText, setUnmarkConfirmText] = useState("");
 
   const setToday = () => {
     setStartDate(todayStr);
@@ -135,6 +142,18 @@ export default function Ventas({
   })();
 
   const hasFilter = startDate || endDate;
+
+  const openUnmarkModal = (sale: Sale) => {
+    setUnmarkTarget(sale);
+    setUnmarkStep(1);
+    setUnmarkConfirmText("");
+  };
+
+  const closeUnmarkModal = () => {
+    setUnmarkTarget(null);
+    setUnmarkStep(1);
+    setUnmarkConfirmText("");
+  };
 
   return (
     <div className="flex flex-col gap-4 w-full max-w-4xl mx-auto">
@@ -220,83 +239,101 @@ export default function Ventas({
             No hay ventas para el rango de fechas seleccionado.
           </div>
         ) : (
-          filteredSales.map((sale) => (
-            <div
-              key={sale.id}
-              className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2 text-xs text-yellow-700">
-                  <span>🗓️</span>
-                  <span>
-                    {new Date(sale.date).toLocaleDateString("es-EC", {
-                      day: "numeric",
-                      month: "numeric",
-                      year: "numeric",
-                    })}{" "}
-                    ·{" "}
-                    {new Date(sale.date).toLocaleTimeString("es-EC", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-amber-400">${sale.total.toFixed(2)}</span>
-                  <button
-                    onClick={() => { setDeleteTarget(sale); setDeleteConfirmText(""); }}
-                    className="w-8 h-8 flex items-center justify-center rounded-md border-2 border-amber-600 hover:bg-amber-800 text-amber-500 transition-colors cursor-pointer"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth="1.5"
-                      stroke="currentColor"
-                      className="w-4 h-4"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between mt-1 mb-2">
-                {sale.status === "delivered" ? (
-                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-green-400 bg-green-900/30 border border-green-700 rounded-full px-3 py-1">
-                    ✅ Entregado
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-yellow-400 bg-yellow-900/30 border border-yellow-700 rounded-full px-3 py-1">
-                    🕐 Pendiente
-                  </span>
-                )}
-                {(!sale.status || sale.status === "pending") && (
-                  <button
-                    onClick={() => onMarkDelivered(sale.id)}
-                    className="text-xs font-bold uppercase tracking-widest py-1.5 px-4 rounded-full bg-green-800 hover:bg-green-700 text-green-100 cursor-pointer transition-colors border border-green-700"
-                  >
-                    Marcar Entregado
-                  </button>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-1">
-                {sale.items.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-xs">
-                    <span className="text-amber-100">
-                      {getEmoji(item.name)} {item.name} ×{item.quantity}
+          filteredSales.map((sale) => {
+            const isDelivered = sale.status === "delivered";
+            return (
+              <div
+                key={sale.id}
+                className={`border-2 rounded-lg p-4 transition-colors ${
+                  isDelivered
+                    ? "bg-green-950/20 border-green-900"
+                    : "bg-amber-900/30 border-amber-800"
+                }`}
+              >
+                {/* Header row: date + total + delete */}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2 text-xs text-yellow-700">
+                    <span>🗓️</span>
+                    <span>
+                      {new Date(sale.date).toLocaleDateString("es-EC", {
+                        day: "numeric",
+                        month: "numeric",
+                        year: "numeric",
+                      })}{" "}
+                      ·{" "}
+                      {new Date(sale.date).toLocaleTimeString("es-EC", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </span>
-                    <span className="text-yellow-700">${(item.price * item.quantity).toFixed(2)}</span>
                   </div>
-                ))}
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-amber-400">${sale.total.toFixed(2)}</span>
+                    <button
+                      onClick={() => { setDeleteTarget(sale); setDeleteConfirmText(""); }}
+                      className="w-8 h-8 flex items-center justify-center rounded-md border-2 border-amber-600 hover:bg-amber-800 text-amber-500 transition-colors cursor-pointer"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth="1.5"
+                        stroke="currentColor"
+                        className="w-4 h-4"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Status row */}
+                <div className="flex items-center justify-between mb-3">
+                  {isDelivered ? (
+                    <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-green-400 bg-green-900/40 border border-green-700 rounded-full px-3 py-1">
+                      ✅ Entregado
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-yellow-400 bg-yellow-900/30 border border-yellow-700 rounded-full px-3 py-1">
+                      🕐 Pendiente
+                    </span>
+                  )}
+
+                  {isDelivered ? (
+                    <button
+                      onClick={() => openUnmarkModal(sale)}
+                      className="text-[10px] font-bold uppercase tracking-widest py-1 px-3 rounded-full bg-transparent border border-green-800 hover:border-yellow-700 text-green-700 hover:text-yellow-500 cursor-pointer transition-colors"
+                    >
+                      ↩ Deshacer entrega
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => onMarkDelivered(sale.id)}
+                      className="text-[10px] font-bold uppercase tracking-widest py-1 px-3 rounded-full bg-green-800 hover:bg-green-700 border border-green-700 text-green-100 cursor-pointer transition-colors"
+                    >
+                      ✓ Marcar entregado
+                    </button>
+                  )}
+                </div>
+
+                {/* Items */}
+                <div className="flex flex-col gap-1">
+                  {sale.items.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-xs">
+                      <span className="text-amber-100">
+                        {getEmoji(item.name)} {item.name} ×{item.quantity}
+                      </span>
+                      <span className="text-yellow-700">${(item.price * item.quantity).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -356,6 +393,106 @@ export default function Ventas({
                 Eliminar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unmark delivered — two-step confirmation modal */}
+      {unmarkTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={closeUnmarkModal}
+          />
+          <div className="relative bg-amber-950 border-2 border-yellow-700 rounded-xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
+
+            {/* Step indicator */}
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">↩</span>
+              <div className="flex flex-col">
+                <h2 className="text-yellow-400 font-bold text-base uppercase tracking-widest leading-tight">
+                  Deshacer entrega
+                </h2>
+                <p className="text-[10px] uppercase tracking-widest text-yellow-700">
+                  Paso {unmarkStep} de 2
+                </p>
+              </div>
+            </div>
+
+            {/* Step 1: first confirmation */}
+            {unmarkStep === 1 && (
+              <>
+                <p className="text-amber-200 text-sm">
+                  ¿Estás seguro de que quieres revertir el pedido del{" "}
+                  <span className="font-bold text-amber-400">
+                    {new Date(unmarkTarget.date).toLocaleDateString("es-EC", {
+                      day: "numeric", month: "long", year: "numeric",
+                    })}
+                  </span>{" "}
+                  por <span className="font-bold text-amber-400">${unmarkTarget.total.toFixed(2)}</span> a estado{" "}
+                  <span className="font-bold text-yellow-400">Pendiente</span>?
+                </p>
+                <div className="flex gap-3 pt-1">
+                  <button
+                    onClick={closeUnmarkModal}
+                    className="flex-1 py-2.5 border-2 border-amber-800 text-amber-700 hover:border-amber-600 hover:text-amber-500 rounded-lg text-sm font-bold cursor-pointer transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => setUnmarkStep(2)}
+                    className="flex-1 py-2.5 bg-yellow-700 hover:bg-yellow-600 text-white rounded-lg text-sm font-bold cursor-pointer transition-colors"
+                  >
+                    Sí, continuar
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Step 2: type "pendiente" to confirm */}
+            {unmarkStep === 2 && (
+              <>
+                <p className="text-amber-200 text-sm">
+                  Esta acción marcará el pedido como <span className="font-bold text-yellow-400">Pendiente</span> nuevamente.
+                  Escribe la palabra de confirmación para proceder.
+                </p>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] uppercase tracking-widest text-yellow-600">
+                    Escribe <span className="font-bold text-yellow-400">pendiente</span> para confirmar
+                  </label>
+                  <input
+                    type="text"
+                    value={unmarkConfirmText}
+                    onChange={(e) => setUnmarkConfirmText(e.target.value)}
+                    placeholder="pendiente"
+                    autoFocus
+                    className="bg-amber-950/60 border-2 border-yellow-900 focus:border-yellow-600 rounded-lg px-3 py-2 text-amber-100 text-sm focus:outline-none transition-colors"
+                  />
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <button
+                    onClick={() => setUnmarkStep(1)}
+                    className="flex-1 py-2.5 border-2 border-amber-800 text-amber-700 hover:border-amber-600 hover:text-amber-500 rounded-lg text-sm font-bold cursor-pointer transition-colors"
+                  >
+                    ← Volver
+                  </button>
+                  <button
+                    disabled={unmarkConfirmText.trim().toLowerCase() !== "pendiente"}
+                    onClick={() => {
+                      onUnmarkDelivered(unmarkTarget.id);
+                      closeUnmarkModal();
+                    }}
+                    className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-colors ${
+                      unmarkConfirmText.trim().toLowerCase() === "pendiente"
+                        ? "bg-yellow-700 hover:bg-yellow-600 text-white cursor-pointer"
+                        : "bg-yellow-950/40 text-yellow-900 cursor-not-allowed"
+                    }`}
+                  >
+                    Confirmar
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

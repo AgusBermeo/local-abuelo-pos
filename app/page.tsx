@@ -9,7 +9,17 @@ import Inventario from "./components/inventario";
 import { useState } from "react";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 
-const INITIAL_PRODUCTS = [
+export type Product = {
+  id: number;
+  name: string;
+  price: number | { grande: number; normal: number; bocadito: number };
+  stock?: number | { grande: number; normal: number; bocadito: number };
+  category: string;
+  size: string | { grande: string; normal: string; bocadito: string };
+  relleno?: { carne: string; pollo: string } | null;
+};
+
+const INITIAL_PRODUCTS: Product[] = [
   { id: 1, name: "Empanada", price: { grande: 1.75, normal: 1.5, bocadito: 0.6 }, category: "Comida", size: { grande: "Grande", normal: "Normal", bocadito: "Bocadito"}, relleno: {carne: "Carne", pollo: "Pollo"}},
   { id: 2, name: "Bandeja de 5 empanadas", price: { grande: 5.25, normal: 4.5, bocadito: 3 }, category: "Comida", size: { grande: "Grande", normal: "Normal", bocadito: "Bocadito"}, relleno: {carne: "Carne", pollo: "Pollo"}},
   { id: 3, name: "Bandeja de 10 empanadas", price: { grande: 8.5, normal: 7, bocadito: 5.5 }, category: "Comida", size: { grande: "Grande", normal: "Normal", bocadito: "Bocadito"}, relleno: {carne: "Carne", pollo: "Pollo"}},
@@ -21,7 +31,7 @@ const INITIAL_PRODUCTS = [
   { id: 9, name: "Agua con gas", price: 1.25, category: "Bebida", size: "300ml"},
   { id: 10, name: "Infusión de frutas deshidratadas", price: 2.5, category: "Bebida", size: "Taza"},
   { id: 11, name: "Cerveza Pilsener", price: 2.5, category: "Bebida", size: "350ml"},
-]
+];
 
 export type OrderItem = {
   name: string;
@@ -38,7 +48,7 @@ export type Sale = {
 };
 
 export default function Home() {
-  const [products, setProducts] = useLocalStorage('abuelo-products', INITIAL_PRODUCTS);
+  const [products, setProducts] = useLocalStorage<Product[]>('abuelo-products', INITIAL_PRODUCTS);
   const [activeTab, setActiveTab] = useState(0);
   const [sales, setSales] = useLocalStorage<Sale[]>('abuelo-sales', []);
 
@@ -57,18 +67,28 @@ export default function Home() {
     setSales((prev) => prev.filter((s) => s.id !== id));
   };
 
-  const addProduct = (product: (typeof INITIAL_PRODUCTS)[number]) => {
-    setProducts((prev) => [...prev, product]);
-  };
- 
-  const deleteProduct = (id: number) => {
-    setProducts((prev) => prev.filter((p) => p.id !== id));
-  };
-
   const markDelivered = (id: number) => {
     setSales((prev) =>
       prev.map((s) => (s.id === id ? { ...s, status: "delivered" } : s))
     );
+  };
+ 
+  const unmarkDelivered = (id: number) => {
+    setSales((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, status: "pending" } : s))
+    );
+  };
+
+  const addProduct = (product: Product) => {
+    setProducts((prev) => [...prev, product]);
+  };
+
+  const editProduct = (product: Product) => {
+    setProducts((prev) => prev.map((p) => p.id === product.id ? product : p));
+  };
+
+  const deleteProduct = (id: number) => {
+    setProducts((prev) => prev.filter((p) => p.id !== id));
   };
 
   const foodProducts = products.filter((product) => product.category === "Comida");
@@ -81,11 +101,11 @@ export default function Home() {
     },
     {
       label: "📋 Ventas",
-      content: <Ventas sales={sales} onDelete={deleteSale} onMarkDelivered={markDelivered} />,
+      content: <Ventas sales={sales} onDelete={deleteSale} onMarkDelivered={markDelivered} onUnmarkDelivered={unmarkDelivered}/>,
     },
     {
       label: "📦 Inventario",
-      content: <Inventario products={products} onAddProduct={addProduct} onDeleteProduct={deleteProduct} />,
+      content: <Inventario products={products} onAddProduct={addProduct} onDeleteProduct={deleteProduct} onEditProduct={editProduct} />,
     },
   ];
 
