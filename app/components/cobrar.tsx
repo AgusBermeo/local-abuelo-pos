@@ -398,7 +398,7 @@ export default function Cobrar(props: {
               onClick={clearCart}
               className="flex-1 mt-4 bg-red-600 hover:bg-red-500 text-white py-3 px-4 rounded-lg font-bold cursor-pointer transition-colors"
             >
-              Cancelar Pedido
+              Cancelar
             </button>
             <button
               onClick={handleCobrar}
@@ -409,7 +409,7 @@ export default function Cobrar(props: {
                   : "bg-amber-900/40 text-amber-800 cursor-not-allowed"
               }`}
             >
-              💰 Cobrar ${total.toFixed(2)}
+              Cobrar ${total.toFixed(2)}
             </button>
           </div>
         )}
