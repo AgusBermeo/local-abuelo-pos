@@ -92,30 +92,42 @@ export default function Ventas({
     });
   })();
 
+  const todaySales = (() => {
+  return sales.filter((s) => toLocalDateString(new Date(s.date)) === todayStr);
+})();
+
+const rangeSales = (() => {
+  if (!startDate && !endDate) return todaySales;
+  return sales.filter((s) => {
+    const d = toLocalDateString(new Date(s.date));
+    if (startDate && endDate) return d >= startDate && d <= endDate;
+    if (startDate) return d >= startDate;
+    if (endDate) return d <= endDate;
+    return true;
+  });
+})();
+
+const rangeRevenue = rangeSales.reduce((acc, s) => acc + s.total, 0);
+
   const rangeStart = startDate ? new Date(startDate + "T00:00:00") : null;
-  const rangeEnd = endDate ? new Date(endDate + "T23:59:59") : null;
+const rangeEnd = endDate ? new Date(endDate + "T23:59:59") : null;
 
-  const rangeSales = (() => {
-    if (!rangeStart && !rangeEnd) return sales;
-    return sales.filter((s) => {
-      const d = new Date(s.date);
-      if (rangeStart && rangeEnd) return d >= rangeStart && d <= rangeEnd;
-      if (rangeStart) return d >= rangeStart;
-      if (rangeEnd) return d <= rangeEnd;
-      return true;
-    });
-  })();
-  const rangeRevenue = rangeSales.reduce((acc, s) => acc + s.total, 0);
+const monthSalesFiltered = (() => {
+  if (!rangeStart && !rangeEnd) {
+    const currentMonth = new Date();
+    currentMonth.setDate(1);
+    currentMonth.setHours(0, 0, 0, 0);
+    return sales.filter((s) => new Date(s.date) >= currentMonth);
+  }
+  return sales.filter((s) => {
+    const d = new Date(s.date);
+    if (rangeStart && rangeEnd) return d >= rangeStart && d <= rangeEnd;
+    if (rangeStart) return d >= rangeStart;
+    if (rangeEnd) return d <= rangeEnd;
+    return true;
+  });
+})();
 
-  const monthSalesFiltered = (() => {
-    if (!rangeStart && !rangeEnd) {
-      const currentMonth = new Date();
-      currentMonth.setDate(1);
-      currentMonth.setHours(0, 0, 0, 0);
-      return sales.filter((s) => new Date(s.date) >= currentMonth);
-    }
-    return rangeSales;
-  })();
   const monthRevenue = monthSalesFiltered.reduce((acc, s) => acc + s.total, 0);
 
   const monthLabel = (() => {
@@ -130,16 +142,21 @@ export default function Ventas({
   const totalRevenue = sales.reduce((acc, s) => acc + s.total, 0);
 
   const rangeLabel = (() => {
-    if (!startDate && !endDate) return "Total Global";
-    if (startDate === endDate && startDate) {
-      return new Date(startDate + "T00:00:00").toLocaleDateString("es-EC", {
-        day: "numeric", month: "long", year: "numeric",
-      });
-    }
-    const s = startDate ? new Date(startDate + "T00:00:00").toLocaleDateString("es-EC", { day: "numeric", month: "short", year: "numeric" }) : "…";
-    const e = endDate ? new Date(endDate + "T00:00:00").toLocaleDateString("es-EC", { day: "numeric", month: "short", year: "numeric" }) : "…";
-    return `${s} – ${e}`;
-  })();
+  if (!startDate && !endDate) return "Hoy";  // 👈 solo este cambio
+  if (startDate === endDate && startDate) {
+    return new Date(startDate + "T00:00:00").toLocaleDateString("es-EC", {
+      day: "numeric", month: "long", year: "numeric",
+    });
+  }
+  const s = startDate
+    ? new Date(startDate + "T00:00:00").toLocaleDateString("es-EC", { day: "numeric", month: "short", year: "numeric" })
+    : "…";
+  const e = endDate
+    ? new Date(endDate + "T00:00:00").toLocaleDateString("es-EC", { day: "numeric", month: "short", year: "numeric" })
+    : "…";
+  return `${s} – ${e}`;
+})();
+
 
   const hasFilter = startDate || endDate;
 
@@ -247,7 +264,12 @@ export default function Ventas({
                 className={`border-2 rounded-lg p-4 transition-colors ${
                   isDelivered
                     ? "bg-green-950/20 border-green-900"
-                    : "bg-amber-900/30 border-amber-800"
+                    : (() => {
+                        const minutesAgo = (Date.now() - new Date(sale.date).getTime()) / 60000;
+                        if (minutesAgo > 1440) return "bg-red-950/20 border-red-700";
+                        if (minutesAgo > 720)   return "bg-orange-950 border-orange-700";
+                        return "bg-amber-900/30 border-amber-800";
+                      })()
                 }`}
               >
                 {/* Header row: date + total + delete */}
