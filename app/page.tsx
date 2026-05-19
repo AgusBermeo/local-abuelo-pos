@@ -6,7 +6,7 @@ import Cobrar from "./components/cobrar";
 import Ventas from "./components/ventas";
 import Inventario from "./components/inventario";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 
 // Food products use fixed keys: grande | normal | bocadito
@@ -76,6 +76,10 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState(0);
   const [sales, setSales] = useLocalStorage<Sale[]>('abuelo-sales', []);
 
+  useEffect(() => {
+    window.localStorage.clear();
+  }, []);
+  
   const addSale = (items: OrderItem[], total: number) => {
     const newSale: Sale = {
       id: Date.now(),
