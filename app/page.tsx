@@ -72,6 +72,7 @@ export type Sale = {
 };
 
 export default function Home() {
+  window.localStorage.clear();
   const [products, setProducts] = useLocalStorage<Product[]>('abuelo-products', INITIAL_PRODUCTS);
   const [activeTab, setActiveTab] = useState(0);
   const [sales, setSales] = useLocalStorage<Sale[]>('abuelo-sales', []);
