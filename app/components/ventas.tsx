@@ -82,13 +82,20 @@ export default function Ventas({
   };
 
   const filteredSales = (() => {
-    if (!startDate && !endDate) return sales;
-    return sales.filter((s) => {
-      const d = toLocalDateString(new Date(s.date));
-      if (startDate && endDate) return d >= startDate && d <= endDate;
-      if (startDate) return d >= startDate;
-      if (endDate) return d <= endDate;
-      return true;
+    const filtered = (() => {
+      if (!startDate && !endDate) return sales;
+      return sales.filter((s) => {
+        const d = toLocalDateString(new Date(s.date));
+        if (startDate && endDate) return d >= startDate && d <= endDate;
+        if (startDate) return d >= startDate;
+        if (endDate) return d <= endDate;
+        return true;
+      });
+    })();
+    return [...filtered].sort((a, b) => {
+      const aP = a.status === "pending" || !a.status ? 0 : 1;
+      const bP = b.status === "pending" || !b.status ? 0 : 1;
+      return aP - bP;
     });
   })();
 
@@ -164,9 +171,10 @@ const monthLabel = (() => {
 
 
   const totalRevenue = sales.reduce((acc, s) => acc + s.total, 0);
+  const pendingCount = sales.filter((s) => s.status === "pending" || !s.status).length;
 
   const rangeLabel = (() => {
-  if (!startDate && !endDate) return "Hoy";  // 👈 solo este cambio
+  if (!startDate && !endDate) return "Hoy";
   if (startDate === endDate && startDate) {
     return new Date(startDate + "T00:00:00").toLocaleDateString("es-EC", {
       day: "numeric", month: "long", year: "numeric",
@@ -198,6 +206,21 @@ const monthLabel = (() => {
 
   return (
     <div className="flex flex-col gap-4 w-full max-w-4xl mx-auto">
+
+      {/* Pending orders banner */}
+      {pendingCount > 0 && (
+        <div className="flex items-center gap-3 bg-yellow-900/40 border-2 border-yellow-600 rounded-lg px-4 py-3">
+          <span className="text-xl leading-none">🕐</span>
+          <p className="text-sm text-yellow-300">
+            Tienes{" "}
+            <span className="text-yellow-400">
+              {pendingCount} pedido{pendingCount !== 1 ? "s" : ""}
+            </span>{" "}
+            pendiente{pendingCount !== 1 ? "s" : ""}
+          </p>
+        </div>
+      )}
+
       {/* Date range filter */}
       <div className="flex flex-col gap-2">
         <label className="text-xs uppercase text-yellow-700 tracking-widest">
