@@ -191,7 +191,7 @@ function DrinkSizeEditor({
       <div className="flex flex-col gap-2">
         {rows.map((row, idx) => (
           <div key={row.id} className="flex gap-2 items-start">
-            <div className="flex-1 flex flex-col gap-1">
+            <div className="md:w-4/7 w-1/2 md:flex-1 flex flex-col gap-1">
               <input
                 type="text"
                 value={row.label}
@@ -203,7 +203,7 @@ function DrinkSizeEditor({
                 <p className="text-red-400 text-[10px]">{errors[`drinkLabel_${row.id}`]}</p>
               )}
             </div>
-            <div className="w-28 flex flex-col gap-1">
+            <div className="md:w-2/7 w-2/5 flex flex-col gap-1">
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500 text-sm font-bold pointer-events-none">$</span>
                 <input
@@ -223,7 +223,7 @@ function DrinkSizeEditor({
             <button
               onClick={() => removeRow(row.id)}
               disabled={rows.length <= 1}
-              className={`w-9 h-9 mt-0 flex items-center justify-center rounded-lg border-2 transition-colors text-sm ${
+              className={`min-w-9 w-9 h-9 mt-0 flex items-center justify-center rounded-lg border-2 transition-colors text-sm ${
                 rows.length <= 1
                   ? "border-amber-900 text-amber-900 cursor-not-allowed"
                   : "border-red-900 hover:border-red-700 text-red-700 hover:text-red-500 cursor-pointer"
