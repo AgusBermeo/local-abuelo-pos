@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 type FoodSizes = { grande: number; normal: number; bocadito: number };
 type DrinkSizes = Record<string, { label: string; price: number }>;
@@ -46,7 +46,6 @@ function isDrinkSizes(price: Product["price"]): price is DrinkSizes {
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-/** Returns available food sizes (price > 0) as [key, label] pairs */
 function getAvailableFoodSizes(product: Product): [string, string][] {
   if (!isFoodSizes(product.price) || typeof product.size !== "object") return [];
   return Object.entries(product.size as Record<string, string>).filter(([key]) => {
@@ -55,7 +54,6 @@ function getAvailableFoodSizes(product: Product): [string, string][] {
   });
 }
 
-/** Returns available drink sizes (price > 0) as [key, label] pairs */
 function getAvailableDrinkSizes(product: Product): [string, string][] {
   if (!isDrinkSizes(product.price)) return [];
   return Object.entries(product.price as DrinkSizes)
@@ -94,6 +92,21 @@ export default function Cobrar(props: {
   const [selectedSize, setSelectedSize] = useState<Record<number, string>>({});
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [discount, setDiscount] = useState<number>(0);
+
+  // Ref for the cart total block — used to detect visibility
+  const totalBlockRef = useRef<HTMLDivElement>(null);
+  const [isTotalVisible, setIsTotalVisible] = useState(false);
+
+  useEffect(() => {
+    const el = totalBlockRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsTotalVisible(entry.isIntersecting),
+      { threshold: 0.1 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const requiresSize = (product: Product) =>
     isFoodSizes(product.price) || isDrinkSizes(product.price);
@@ -159,6 +172,7 @@ export default function Cobrar(props: {
   const subtotal = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const discountAmount = Math.min(discount, subtotal);
   const total = subtotal - discountAmount;
+  const totalItems = orderItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const handleCobrar = () => {
     if (orderItems.length === 0) return;
@@ -181,6 +195,10 @@ export default function Cobrar(props: {
     setDiscount(0);
   };
 
+  const scrollToCart = () => {
+    totalBlockRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
   // ── ProductCard ─────────────────────────────────────────────────────────────
   const ProductCard = ({ product }: { product: Product }) => {
     const count = getItemCount(product);
@@ -191,10 +209,9 @@ export default function Cobrar(props: {
     const needsSize = requiresSize(product);
     const canAdd = !needsSize || !!sizeKey;
 
-    // Which size buttons to render
     const foodSizes = isFoodSizes(product.price) ? getAvailableFoodSizes(product) : [];
     const drinkSizes = isDrinkSizes(product.price) ? getAvailableDrinkSizes(product) : [];
-    const allSizes = [...foodSizes, ...drinkSizes]; // one or the other will be populated
+    const allSizes = [...foodSizes, ...drinkSizes];
 
     const removeKey = `${product.id}-${sizeKey ?? "single"}-${rellenoKey ?? "none"}`;
 
@@ -203,7 +220,6 @@ export default function Cobrar(props: {
         <h2 className="font-bold text-sm max-w-[90%] mb-2">{product.name}</h2>
 
         <div className={`flex flex-col mb-2 ${product.relleno ? "gap-2" : ""}`}>
-          {/* Relleno selector (food only) */}
           {product.relleno && (
             <div className="flex items-center gap-2 flex-wrap">
               {Object.entries(product.relleno).map(([key, value]) => (
@@ -220,7 +236,6 @@ export default function Cobrar(props: {
             </div>
           )}
 
-          {/* Size selector (food or drink multi-size) */}
           {allSizes.length > 0 ? (
             <div className="flex items-center gap-2 flex-wrap">
               {allSizes.map(([key, label]) => (
@@ -236,7 +251,6 @@ export default function Cobrar(props: {
               ))}
             </div>
           ) : (
-            // Simple single-size label
             <span className="text-xs text-amber-700 font-bold">
               {product.size as string}
             </span>
@@ -280,6 +294,8 @@ export default function Cobrar(props: {
       </div>
     );
   };
+
+  const showFloatingBar = total > 0 && !isTotalVisible;
 
   return (
     <div className="flex flex-col gap-4 w-full max-w-4xl mx-auto">
@@ -372,8 +388,8 @@ export default function Cobrar(props: {
           )}
         </div>
 
-        {/* Totals */}
-        <div className="mt-4 flex flex-col gap-1">
+        {/* Totals — this block is observed for visibility */}
+        <div ref={totalBlockRef} className="mt-4 flex flex-col gap-1">
           {discount > 0 && (
             <div className="flex justify-between items-center text-sm text-amber-700">
               <span>Subtotal</span>
@@ -414,6 +430,50 @@ export default function Cobrar(props: {
           </div>
         )}
       </div>
+
+      {/* Floating total bar — visible when order > 0 and cart total is off screen */}
+      <div
+        className={`fixed bottom-0 left-0 right-0 z-40 transition-all duration-300 ease-in-out ${
+          showFloatingBar
+            ? "translate-y-0 opacity-100"
+            : "translate-y-full opacity-0 pointer-events-none"
+        }`}
+      >
+        <div className="bg-amber-950/95 backdrop-blur-md border-t-2 border-amber-600 shadow-[0_-4px_32px_rgba(0,0,0,0.5)]">
+          <button
+            onClick={scrollToCart}
+            className="w-full flex items-center justify-between px-6 py-4 cursor-pointer group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-7 h-7 rounded-full bg-amber-500 text-amber-950 text-xs font-bold">
+                {totalItems}
+              </div>
+              <span className="text-xs uppercase tracking-widest text-amber-600 font-bold group-hover:text-amber-400 transition-colors">
+                Ver pedido
+              </span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth="2"
+                stroke="currentColor"
+                className="w-3.5 h-3.5 text-amber-600 group-hover:text-amber-400 transition-colors -rotate-90"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+              </svg>
+            </div>
+            <div className="flex items-center gap-3">
+              {discount > 0 && (
+                <span className="text-xs text-amber-700 line-through">${subtotal.toFixed(2)}</span>
+              )}
+              <span className="text-2xl font-bold text-amber-400">${total.toFixed(2)}</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* Bottom padding so content isn't hidden behind floating bar */}
+      {showFloatingBar && <div className="h-20" />}
     </div>
   );
 }

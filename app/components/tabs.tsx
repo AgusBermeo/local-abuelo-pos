@@ -18,7 +18,7 @@ export default function Tabs({
                 <button 
                     key={tab.label} 
                     onClick={() => setActiveTab(index)}
-                    className={`flex-1 py-4 font-semibold cursor-pointer border-b-2 transition-colors ${
+                    className={`flex-1 py-4 font-semibold cursor-pointer border-b-2 transition-colors text-sm ${
                         activeTab === index 
                             ? "text-amber-500 border-amber-500 bg-amber-900" 
                             : "text-amber-800 hover:text-amber-500 border-amber-700"
