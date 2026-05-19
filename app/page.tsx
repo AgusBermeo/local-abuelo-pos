@@ -44,26 +44,17 @@ export function isDrinkSizes(price: Product["price"]): price is DrinkSizes {
 
 const INITIAL_PRODUCTS: Product[] = [
   { id: 1, name: "Empanada", price: { grande: 1.75, normal: 1.5, bocadito: 0.6 }, category: "Comida", size: { grande: "Grande", normal: "Normal", bocadito: "Bocadito"}, relleno: {carne: "Carne", pollo: "Pollo"}},
-  { id: 2, name: "Bandeja de 5 empanadas", price: { grande: 5.25, normal: 4.5, bocadito: 3 }, category: "Comida", size: { grande: "Grande", normal: "Normal", bocadito: "Bocadito"}, relleno: {carne: "Carne", pollo: "Pollo"}},
-  { id: 3, name: "Bandeja de 10 empanadas", price: { grande: 8.5, normal: 7, bocadito: 5.5 }, category: "Comida", size: { grande: "Grande", normal: "Normal", bocadito: "Bocadito"}, relleno: {carne: "Carne", pollo: "Pollo"}},
-  { id: 4, name: "Bandeja de 20 empanadas", price: { grande: 16, normal: 14, bocadito: 10 }, category: "Comida", size: { grande: "Grande", normal: "Normal", bocadito: "Bocadito"}, relleno: {carne: "Carne", pollo: "Pollo"}},
-  { id: 5, name: "Café Pasado", price: 1.25, category: "Bebida", size: "Taza"},
-  { id: 6, name: "Aromática", price: 1.25, category: "Bebida", size: "Taza"},
-  {
-    id: 7,
-    name: "Gaseosa",
-    category: "Bebida",
-    size: "Tamaño",
-    price: {
-      s300: { label: "300ml", price: 1.00 },
-      s500: { label: "500ml", price: 1.50 },
-      s1000: { label: "1 litro", price: 2.50 },
-    } as DrinkSizes,
-  },
-  { id: 8, name: "Agua sin gas", price: 1, category: "Bebida", size: "500ml"},
-  { id: 9, name: "Agua con gas", price: 1.25, category: "Bebida", size: "300ml"},
-  { id: 10, name: "Infusión de frutas deshidratadas", price: 2.5, category: "Bebida", size: "Taza"},
-  { id: 11, name: "Cerveza Pilsener", price: 2.5, category: "Bebida", size: "350ml"},
+  { id: 2, name: "Bandeja de 3 empanadas", price: { grande: 5.25, normal: 4.5, bocadito: 0 }, category: "Comida", size: { grande: "Grande", normal: "Normal", bocadito: "Bocadito"}, relleno: {carne: "Carne", pollo: "Pollo"}},
+  { id: 3, name: "Bandeja de 5 empanadas", price: { grande: 8.5, normal: 7, bocadito: 3 }, category: "Comida", size: { grande: "Grande", normal: "Normal", bocadito: "Bocadito"}, relleno: {carne: "Carne", pollo: "Pollo"}},
+  { id: 4, name: "Bandeja de 10 empanadas", price: { grande: 16, normal: 14, bocadito: 5.5 }, category: "Comida", size: { grande: "Grande", normal: "Normal", bocadito: "Bocadito"}, relleno: {carne: "Carne", pollo: "Pollo"}},
+  { id: 5, name: "Bandeja de 20 empanadas", price: { grande: 0, normal: 0, bocadito: 10 }, category: "Comida", size: { grande: "Grande", normal: "Normal", bocadito: "Bocadito"}, relleno: {carne: "Carne", pollo: "Pollo"}},
+  { id: 6, name: "Café Pasado", price: 1.25, category: "Bebida", size: "Taza"},
+  { id: 7, name: "Aromática", price: 1.25, category: "Bebida", size: "Taza"},
+  { id: 8, name: "Gaseosa", price: 1.50, category: "Bebida", size: "500ml"},
+  { id: 9, name: "Agua sin gas", price: 1, category: "Bebida", size: "500ml"},
+  { id: 10, name: "Agua con gas", price: 1.25, category: "Bebida", size: "300ml"},
+  { id: 11, name: "Infusión de frutas deshidratadas", price: 2.5, category: "Bebida", size: "Taza"},
+  { id: 12, name: "Cerveza Pilsener", price: 2.5, category: "Bebida", size: "350ml"},
 ];
 
 export type OrderItem = {

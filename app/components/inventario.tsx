@@ -552,7 +552,7 @@ export default function Inventario({
     <div className="w-full flex flex-col max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex justify-between items-center pb-3">
-        <p className="text-yellow-700 text-xs">Edita o elimina un producto</p>
+        <p className="text-yellow-700 text-xs">Agrega, edita o elimina un producto</p>
         <button
           onClick={() => setShowAddModal(true)}
           className="bg-amber-500 hover:bg-amber-400 text-amber-950 text-xs font-bold py-2 px-4 rounded-md cursor-pointer uppercase transition-colors"

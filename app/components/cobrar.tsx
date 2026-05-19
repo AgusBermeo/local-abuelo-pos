@@ -117,6 +117,7 @@ export default function Cobrar(props: {
     const rellenoKey = product.relleno ? (selectedRelleno[product.id] || null) : null;
 
     if (needsSize && !sizeKey) return;
+    if (product.relleno && !rellenoKey) return;
 
     const sizeLabel = getSizeLabel(product, sizeKey);
     const rellenoLabel =
@@ -207,7 +208,7 @@ export default function Cobrar(props: {
     const price = getPrice(product, sizeKey ?? null);
 
     const needsSize = requiresSize(product);
-    const canAdd = !needsSize || !!sizeKey;
+    const canAdd = (!needsSize || !!sizeKey) && (!product.relleno || !!rellenoKey);
 
     const foodSizes = isFoodSizes(product.price) ? getAvailableFoodSizes(product) : [];
     const drinkSizes = isDrinkSizes(product.price) ? getAvailableDrinkSizes(product) : [];
@@ -442,7 +443,7 @@ export default function Cobrar(props: {
         <div className="bg-amber-950/95 backdrop-blur-md border-t-2 border-amber-600 shadow-[0_-4px_32px_rgba(0,0,0,0.5)]">
           <button
             onClick={scrollToCart}
-            className="w-full flex items-center justify-between px-6 py-4 cursor-pointer group"
+            className="w-full max-w-4xl m-auto flex items-center justify-between px-6 py-4 cursor-pointer group"
           >
             <div className="flex items-center gap-3">
               <div className="flex items-center justify-center w-7 h-7 rounded-full bg-amber-500 text-amber-950 text-xs font-bold">

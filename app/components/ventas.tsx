@@ -267,7 +267,7 @@ const monthLabel = (() => {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4">
-          <p className="text-[10px] uppercase text-yellow-700 tracking-widest mb-1 capitalize leading-tight">
+          <p className="text-[10px] uppercase text-yellow-700 tracking-widest mb-1 leading-tight">
             {rangeLabel}
           </p>
           <p className="text-2xl font-bold text-amber-400">{rangeSales.length}</p>
@@ -276,7 +276,7 @@ const monthLabel = (() => {
         </div>
 
         <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4">
-          <p className="text-[10px] uppercase text-yellow-700 tracking-widest mb-1 capitalize leading-tight">
+          <p className="text-[10px] uppercase text-yellow-700 tracking-widest mb-1 leading-tight">
             {monthLabel}
           </p>
           <p className="text-2xl font-bold text-yellow-500">{monthSalesFiltered.length}</p>
