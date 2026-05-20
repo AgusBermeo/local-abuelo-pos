@@ -137,7 +137,7 @@ export default function Home() {
     <div className="flex flex-col flex-1 min-h-dvh bg-amber-950/60 font-sans">
       <Header />
       <Tabs tabs={TABS} activeTab={activeTab} setActiveTab={setActiveTab} />
-      <div className="flex justify-center w-full px-6 pt-6 pb-4">
+      <div className="flex justify-center w-full md:px-6 px-3 pt-6 pb-4">
         {TABS[activeTab].content}
       </div>
     </div>
