@@ -8,12 +8,21 @@ type OrderItem = {
   price: number;
 };
 
+type PaymentMethod = "efectivo" | "transferencia" | "deuna";
+
 type Sale = {
   id: number;
   date: Date;
   items: OrderItem[];
   total: number;
   status?: "pending" | "delivered";
+  paymentMethod?: PaymentMethod;
+};
+
+const PAYMENT_LABELS: Record<PaymentMethod, { label: string; emoji: string; classes: string }> = {
+  efectivo:      { label: "Efectivo",      emoji: "💵", classes: "text-green-400 bg-green-900/30 border-green-800" },
+  transferencia: { label: "Transferencia", emoji: "🏦", classes: "text-blue-400 bg-blue-900/30 border-blue-800" },
+  deuna:         { label: "De Una",        emoji: "📱", classes: "text-purple-400 bg-purple-900/30 border-purple-800" },
 };
 
 function getEmoji(name: string) {
@@ -34,21 +43,6 @@ function toLocalDateString(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-function formatMonthLabel(startDate: Date, endDate: Date): string {
-  const startMonth = startDate.getMonth();
-  const startYear = startDate.getFullYear();
-  const endMonth = endDate.getMonth();
-  const endYear = endDate.getFullYear();
-
-  const startLabel = startDate.toLocaleDateString("es-EC", { month: "long", year: "numeric" });
-  const endLabel = endDate.toLocaleDateString("es-EC", { month: "long", year: "numeric" });
-
-  if (startMonth === endMonth && startYear === endYear) {
-    return startLabel;
-  }
-  return `${startLabel} – ${endLabel}`;
-}
-
 export default function Ventas({
   sales,
   onDelete,
@@ -66,7 +60,6 @@ export default function Ventas({
   const [deleteTarget, setDeleteTarget] = useState<Sale | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
-  // Unmark (revert to pending) confirmation — two-step
   const [unmarkTarget, setUnmarkTarget] = useState<Sale | null>(null);
   const [unmarkStep, setUnmarkStep] = useState<1 | 2>(1);
   const [unmarkConfirmText, setUnmarkConfirmText] = useState("");
@@ -99,96 +92,79 @@ export default function Ventas({
     });
   })();
 
-  const todaySales = (() => {
-  return sales.filter((s) => toLocalDateString(new Date(s.date)) === todayStr);
-})();
+  const todaySales = sales.filter((s) => toLocalDateString(new Date(s.date)) === todayStr);
 
-const rangeSales = (() => {
-  if (!startDate && !endDate) return todaySales;
-  return sales.filter((s) => {
-    const d = toLocalDateString(new Date(s.date));
-    if (startDate && endDate) return d >= startDate && d <= endDate;
-    if (startDate) return d >= startDate;
-    if (endDate) return d <= endDate;
-    return true;
-  });
-})();
+  const rangeSales = (() => {
+    if (!startDate && !endDate) return todaySales;
+    return sales.filter((s) => {
+      const d = toLocalDateString(new Date(s.date));
+      if (startDate && endDate) return d >= startDate && d <= endDate;
+      if (startDate) return d >= startDate;
+      if (endDate) return d <= endDate;
+      return true;
+    });
+  })();
 
-const rangeRevenue = rangeSales.reduce((acc, s) => acc + s.total, 0);
+  const rangeRevenue = rangeSales.reduce((acc, s) => acc + s.total, 0);
 
-  const rangeStart = startDate ? new Date(startDate + "T00:00:00") : null;
-const rangeEnd = endDate ? new Date(endDate + "T23:59:59") : null;
-
-const monthSalesFiltered = (() => {
-  if (!startDate && !endDate) {
-    // Mes actual completo
-    const now = new Date();
+  const monthSalesFiltered = (() => {
+    if (!startDate && !endDate) {
+      const now = new Date();
+      return sales.filter((s) => {
+        const d = new Date(s.date);
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      });
+    }
+    const months = new Set<string>();
+    const cursor = new Date((startDate || endDate!) + "T00:00:00");
+    const end = new Date((endDate || startDate!) + "T00:00:00");
+    while (cursor <= end) {
+      months.add(`${cursor.getFullYear()}-${cursor.getMonth()}`);
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
     return sales.filter((s) => {
       const d = new Date(s.date);
-      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      return months.has(`${d.getFullYear()}-${d.getMonth()}`);
     });
-  }
+  })();
 
-  // Recopilar todos los año-mes únicos que toca el rango
-  const months = new Set<string>();
-  const cursor = new Date((startDate || endDate!) + "T00:00:00");
-  const end = new Date((endDate || startDate!) + "T00:00:00");
+  const monthRevenue = monthSalesFiltered.reduce((acc, s) => acc + s.total, 0);
 
-  while (cursor <= end) {
-    months.add(`${cursor.getFullYear()}-${cursor.getMonth()}`);
-    cursor.setMonth(cursor.getMonth() + 1);
-  }
-
-  return sales.filter((s) => {
-    const d = new Date(s.date);
-    return months.has(`${d.getFullYear()}-${d.getMonth()}`);
-  });
-})();
-
-const monthRevenue = monthSalesFiltered.reduce((acc, s) => acc + s.total, 0);
-
-const monthLabel = (() => {
-  if (!startDate && !endDate) {
-    return new Date().toLocaleDateString("es-EC", { month: "long", year: "numeric" });
-  }
-
-  const start = new Date((startDate || endDate!) + "T00:00:00");
-  const end = new Date((endDate || startDate!) + "T00:00:00");
-
-  if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
-    // Mismo mes
-    return start.toLocaleDateString("es-EC", { month: "long", year: "numeric" });
-  }
-
-  // Múltiples meses: "abril – mayo 2025" o "dic 2024 – ene 2025"
-  const startLabel = start.toLocaleDateString("es-EC", {
-    month: "long",
-    ...(start.getFullYear() !== end.getFullYear() ? { year: "numeric" } : {}),
-  });
-  const endLabel = end.toLocaleDateString("es-EC", { month: "long", year: "numeric" });
-  return `${startLabel} – ${endLabel}`;
-})();
-
+  const monthLabel = (() => {
+    if (!startDate && !endDate) {
+      return new Date().toLocaleDateString("es-EC", { month: "long", year: "numeric" });
+    }
+    const start = new Date((startDate || endDate!) + "T00:00:00");
+    const end = new Date((endDate || startDate!) + "T00:00:00");
+    if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
+      return start.toLocaleDateString("es-EC", { month: "long", year: "numeric" });
+    }
+    const startLabel = start.toLocaleDateString("es-EC", {
+      month: "long",
+      ...(start.getFullYear() !== end.getFullYear() ? { year: "numeric" } : {}),
+    });
+    const endLabel = end.toLocaleDateString("es-EC", { month: "long", year: "numeric" });
+    return `${startLabel} – ${endLabel}`;
+  })();
 
   const totalRevenue = sales.reduce((acc, s) => acc + s.total, 0);
   const pendingCount = sales.filter((s) => s.status === "pending" || !s.status).length;
 
   const rangeLabel = (() => {
-  if (!startDate && !endDate) return "Hoy";
-  if (startDate === endDate && startDate) {
-    return new Date(startDate + "T00:00:00").toLocaleDateString("es-EC", {
-      day: "numeric", month: "long", year: "numeric",
-    });
-  }
-  const s = startDate
-    ? new Date(startDate + "T00:00:00").toLocaleDateString("es-EC", { day: "numeric", month: "short", year: "numeric" })
-    : "…";
-  const e = endDate
-    ? new Date(endDate + "T00:00:00").toLocaleDateString("es-EC", { day: "numeric", month: "short", year: "numeric" })
-    : "…";
-  return `${s} – ${e}`;
-})();
-
+    if (!startDate && !endDate) return "Hoy";
+    if (startDate === endDate && startDate) {
+      return new Date(startDate + "T00:00:00").toLocaleDateString("es-EC", {
+        day: "numeric", month: "long", year: "numeric",
+      });
+    }
+    const s = startDate
+      ? new Date(startDate + "T00:00:00").toLocaleDateString("es-EC", { day: "numeric", month: "short", year: "numeric" })
+      : "…";
+    const e = endDate
+      ? new Date(endDate + "T00:00:00").toLocaleDateString("es-EC", { day: "numeric", month: "short", year: "numeric" })
+      : "…";
+    return `${s} – ${e}`;
+  })();
 
   const hasFilter = startDate || endDate;
 
@@ -305,6 +281,7 @@ const monthLabel = (() => {
         ) : (
           filteredSales.map((sale) => {
             const isDelivered = sale.status === "delivered";
+            const payment = sale.paymentMethod ? PAYMENT_LABELS[sale.paymentMethod] : null;
             return (
               <div
                 key={sale.id}
@@ -360,18 +337,29 @@ const monthLabel = (() => {
                   </div>
                 </div>
 
-                {/* Status row */}
+                {/* Status + payment row */}
                 <div className="flex items-center justify-between mb-3">
-                  {isDelivered ? (
-                    <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-green-400 bg-green-900/40 border border-green-700 rounded-full px-3 py-1">
-                      ✅ Entregado
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-yellow-400 bg-yellow-900/30 border border-yellow-700 rounded-full px-3 py-1">
-                      🕐 Pendiente
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Delivery status badge */}
+                    {isDelivered ? (
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-green-400 bg-green-900/40 border border-green-700 rounded-full px-3 py-1">
+                        ✅ Entregado
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-yellow-400 bg-yellow-900/30 border border-yellow-700 rounded-full px-3 py-1">
+                        🕐 Pendiente
+                      </span>
+                    )}
 
+                    {/* Payment method badge */}
+                    {payment && (
+                      <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest border rounded-full px-3 py-1 ${payment.classes}`}>
+                        {payment.emoji} {payment.label}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Deliver / undeliver button */}
                   {isDelivered ? (
                     <button
                       onClick={() => openUnmarkModal(sale)}
@@ -475,7 +463,6 @@ const monthLabel = (() => {
           />
           <div className="relative bg-amber-950 border-2 border-yellow-700 rounded-xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
 
-            {/* Step indicator */}
             <div className="flex items-center gap-2">
               <span className="text-2xl">↩</span>
               <div className="flex flex-col">
@@ -488,7 +475,6 @@ const monthLabel = (() => {
               </div>
             </div>
 
-            {/* Step 1: first confirmation */}
             {unmarkStep === 1 && (
               <>
                 <p className="text-amber-200 text-sm">
@@ -518,7 +504,6 @@ const monthLabel = (() => {
               </>
             )}
 
-            {/* Step 2: type "pendiente" to confirm */}
             {unmarkStep === 2 && (
               <>
                 <p className="text-amber-200 text-sm">

@@ -63,12 +63,15 @@ export type OrderItem = {
   price: number;
 };
 
+export type PaymentMethod = "efectivo" | "transferencia" | "deuna";
+
 export type Sale = {
   id: number;
   date: Date;
   items: OrderItem[];
   total: number;
   status: "pending" | "delivered";
+  paymentMethod: PaymentMethod;
 };
 
 export default function Home() {
@@ -76,13 +79,14 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState(0);
   const [sales, setSales] = useLocalStorage<Sale[]>('abuelo-sales', []);
 
-  const addSale = (items: OrderItem[], total: number) => {
+  const addSale = (items: OrderItem[], total: number, paymentMethod: PaymentMethod) => {
     const newSale: Sale = {
       id: Date.now(),
       date: new Date(),
       items,
       total,
       status: "pending",
+      paymentMethod,
     };
     setSales((prev) => [newSale, ...prev]);
   };

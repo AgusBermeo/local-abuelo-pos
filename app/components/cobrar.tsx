@@ -33,6 +33,14 @@ type SaleItem = {
   price: number;
 };
 
+type PaymentMethod = "efectivo" | "transferencia" | "deuna";
+
+const PAYMENT_OPTIONS: { value: PaymentMethod; label: string; emoji: string; desc: string }[] = [
+  { value: "efectivo",      label: "Efectivo",      emoji: "💵", desc: "Pago en billetes o monedas" },
+  { value: "transferencia", label: "Transferencia", emoji: "🏦", desc: "Transferencia bancaria" },
+  { value: "deuna",         label: "De Una",        emoji: "📱", desc: "Pago con billetera digital" },
+];
+
 // ── type guards ──────────────────────────────────────────────────────────────
 function isFoodSizes(price: Product["price"]): price is FoodSizes {
   return typeof price === "object" && "grande" in price;
@@ -86,12 +94,16 @@ function getSizeLabel(product: Product, sizeKey: string | null): string | null {
 export default function Cobrar(props: {
   foodProducts: Product[];
   drinkProducts: Product[];
-  onSaleComplete: (items: SaleItem[], total: number) => void;
+  onSaleComplete: (items: SaleItem[], total: number, paymentMethod: PaymentMethod) => void;
 }) {
   const [selectedRelleno, setSelectedRelleno] = useState<Record<number, string>>({});
   const [selectedSize, setSelectedSize] = useState<Record<number, string>>({});
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [discount, setDiscount] = useState<number>(0);
+
+  // Payment modal
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod | null>(null);
 
   // Ref for the cart total block — used to detect visibility
   const totalBlockRef = useRef<HTMLDivElement>(null);
@@ -175,18 +187,26 @@ export default function Cobrar(props: {
   const total = subtotal - discountAmount;
   const totalItems = orderItems.reduce((sum, item) => sum + item.quantity, 0);
 
-  const handleCobrar = () => {
+  const openPaymentModal = () => {
     if (orderItems.length === 0) return;
+    setSelectedPayment(null);
+    setShowPaymentModal(true);
+  };
+
+  const confirmPayment = () => {
+    if (!selectedPayment) return;
     const saleItems: SaleItem[] = orderItems.map((item) => {
       const parts = [item.sizeLabel, item.rellenoLabel].filter(Boolean);
       const fullName = parts.length > 0 ? `${item.name} ${parts.join(" · ")}` : item.name;
       return { name: fullName, quantity: item.quantity, price: item.price };
     });
-    props.onSaleComplete(saleItems, total);
+    props.onSaleComplete(saleItems, total, selectedPayment);
     setOrderItems([]);
     setSelectedRelleno({});
     setSelectedSize({});
     setDiscount(0);
+    setShowPaymentModal(false);
+    setSelectedPayment(null);
   };
 
   const clearCart = () => {
@@ -418,19 +438,93 @@ export default function Cobrar(props: {
               Cancelar
             </button>
             <button
-              onClick={handleCobrar}
-              disabled={orderItems.length === 0}
-              className={`flex-2 mt-4 py-3 rounded-lg font-bold uppercase tracking-widest text-sm transition-colors ${
-                orderItems.length > 0
-                  ? "bg-amber-500 hover:bg-amber-400 text-amber-950 cursor-pointer"
-                  : "bg-amber-900/40 text-amber-800 cursor-not-allowed"
-              }`}
+              onClick={openPaymentModal}
+              className="flex-2 mt-4 py-3 px-6 rounded-lg font-bold uppercase tracking-widest text-sm transition-colors bg-amber-500 hover:bg-amber-400 text-amber-950 cursor-pointer"
             >
               Cobrar ${total.toFixed(2)}
             </button>
           </div>
         )}
       </div>
+
+      {/* ── Payment method modal ─────────────────────────────────────────────── */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowPaymentModal(false)}
+          />
+          <div className="relative bg-amber-950 border-2 border-amber-600 rounded-xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-5">
+            {/* Header */}
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">💳</span>
+              <div>
+                <h2 className="text-amber-400 font-bold text-base uppercase tracking-widest leading-tight">
+                  Forma de pago
+                </h2>
+                <p className="text-[10px] uppercase tracking-widest text-yellow-700">
+                  Total a cobrar:{" "}
+                  <span className="text-amber-400 font-bold">${total.toFixed(2)}</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Options */}
+            <div className="flex flex-col gap-2">
+              {PAYMENT_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setSelectedPayment(opt.value)}
+                  className={`flex items-center gap-4 px-4 py-3.5 rounded-xl border-2 text-left cursor-pointer transition-all ${
+                    selectedPayment === opt.value
+                      ? "border-amber-500 bg-amber-900/60"
+                      : "border-amber-800 hover:border-amber-600 bg-amber-900/20 hover:bg-amber-900/40"
+                  }`}
+                >
+                  <span className="text-2xl leading-none">{opt.emoji}</span>
+                  <div className="flex flex-col">
+                    <span className={`font-bold text-sm ${selectedPayment === opt.value ? "text-amber-400" : "text-amber-200"}`}>
+                      {opt.label}
+                    </span>
+                    <span className="text-[10px] text-amber-700">{opt.desc}</span>
+                  </div>
+                  {/* Selection indicator */}
+                  <div className={`ml-auto w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                    selectedPayment === opt.value
+                      ? "border-amber-500 bg-amber-500"
+                      : "border-amber-700"
+                  }`}>
+                    {selectedPayment === opt.value && (
+                      <div className="w-1.5 h-1.5 rounded-full bg-amber-950" />
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                className="flex-1 py-2.5 border-2 border-amber-800 text-amber-700 hover:border-amber-600 hover:text-amber-500 rounded-lg text-sm font-bold cursor-pointer transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                disabled={!selectedPayment}
+                onClick={confirmPayment}
+                className={`flex-1 py-2.5 rounded-lg text-sm font-bold uppercase tracking-widest transition-colors ${
+                  selectedPayment
+                    ? "bg-amber-500 hover:bg-amber-400 text-amber-950 cursor-pointer"
+                    : "bg-amber-900/40 text-amber-800 cursor-not-allowed"
+                }`}
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating total bar — visible when order > 0 and cart total is off screen */}
       <div
