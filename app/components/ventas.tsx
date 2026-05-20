@@ -550,6 +550,16 @@ export default function Ventas({
           </div>
         </div>
       )}
+
+      {/* Floating button to Reporte */}
+      <button
+        onClick={() => window.location.href = "/reporte"}
+        className="fixed bottom-6 right-6 bg-purple-700 hover:bg-purple-600 text-white py-3 px-4 rounded-full shadow-lg flex items-center gap-2 text-sm font-bold transition-colors"
+      >
+        📊 Reporte
+      </button>
+      {/* The Reporte component is now a separate page, so we just link to it instead of rendering it here */}
+
     </div>
   );
 }

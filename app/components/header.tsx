@@ -10,15 +10,18 @@ export default function Header() {
                     <p className="text-xs text-yellow-600">Sistema de Cobros</p>
                 </div>
             </div>
-            <p className="text-yellow-700 text-xs uppercase text-right">
-                {new Date().toLocaleDateString("es-EC", {
-                    weekday: "long",
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                    timeZone: "America/Guayaquil",
-                })}
-            </p>
+            <div className="flex flex-col gap-4 mt-3 sm:mt-0">
+                <h3 className="text-yellow-700 ">Agustin Bermeo</h3>
+                <p className="text-yellow-700 text-xs uppercase text-right">
+                    {new Date().toLocaleDateString("es-EC", {
+                        weekday: "long",
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                        timeZone: "America/Guayaquil",
+                    })}
+                </p>
+            </div>
         </header>
     );
 }
