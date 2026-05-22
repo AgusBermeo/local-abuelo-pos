@@ -73,13 +73,35 @@ function getIngredientUsage(product: Product, variantKey: string): Record<string
   return product.ingredientMap?.[variantKey] ?? {};
 }
 
-// Effective stock = floor( min over all ingredients of (stock - reserved) / qty_per_unit )
+// Total capacity = floor( min over all ingredients of stock / qty_per_unit )
+// Maximum order-units that can be in the cart for this variant, ignoring reservations.
 // Returns null if no ingredients are mapped (untracked).
+function getTotalCapacity(
+  product: Product,
+  variantKey: string,
+  ingredientById: Record<string, Ingredient>
+): number | null {
+  const usage = getIngredientUsage(product, variantKey);
+  const entries = Object.entries(usage);
+  if (entries.length === 0) return null;
+
+  let min = Infinity;
+  for (const [ingId, qtyPerUnit] of entries) {
+    if (qtyPerUnit <= 0) continue;
+    const ing = ingredientById[ingId];
+    if (!ing) continue;
+    min = Math.min(min, Math.floor(ing.stock / qtyPerUnit));
+  }
+  return min === Infinity ? null : min;
+}
+
+// Effective stock after accounting for cart reservations from OTHER products sharing
+// the same ingredients. Used for cross-product badge/hint display.
 function getEffectiveStock(
   product: Product,
   variantKey: string,
   ingredientById: Record<string, Ingredient>,
-  cartReservations: Record<string, number>  // ingredientId → already reserved (raw units)
+  cartReservations: Record<string, number>
 ): number | null {
   const usage = getIngredientUsage(product, variantKey);
   const entries = Object.entries(usage);
@@ -92,7 +114,6 @@ function getEffectiveStock(
     if (!ing) continue;
     const reserved  = cartReservations[ingId] ?? 0;
     const available = Math.max(0, ing.stock - reserved);
-    // How many order-units can we still add?
     min = Math.min(min, Math.floor(available / qtyPerUnit));
   }
   return min === Infinity ? null : min;
@@ -158,8 +179,8 @@ export default function Cobrar(props: {
     const variantKey = makeVariantKey(rawSizeKey, fillingKey);
     const cartKey    = `${product.id}-${variantKey}`;
     const inCart     = orderItems.find((i) => i.key === cartKey)?.quantity ?? 0;
-    const stock      = getEffectiveStock(product, variantKey, ingredientById, cartReservations);
-    if (stock !== null && inCart >= stock) return;
+    const capacity   = getTotalCapacity(product, variantKey, ingredientById);
+    if (capacity !== null && inCart >= capacity) return;
 
     const sizeLabel    = getSizeLabel(product, rawSizeKey);
     const fillingLabel = fillingKey && product.relleno ? product.relleno[fillingKey as keyof typeof product.relleno] : null;
@@ -227,10 +248,13 @@ export default function Cobrar(props: {
     const cartKey    = `${product.id}-${variantKey}`;
     const inCart     = orderItems.find((i) => i.key === cartKey)?.quantity ?? 0;
 
-    const stock      = selectionComplete ? getEffectiveStock(product, variantKey, ingredientById, cartReservations) : null;
-    const badge      = selectionComplete ? stockBadge(stock) : null;
-    const outOfStock = stock !== null && stock === 0;
-    const atMax      = stock !== null && inCart >= stock;
+    // Total capacity (ignores reservations) — used to cap this product's own cart quantity
+    const capacity   = selectionComplete ? getTotalCapacity(product, variantKey, ingredientById) : null;
+    // Effective stock (accounts for cross-product reservations) — used for badge display
+    const effStock   = selectionComplete ? getEffectiveStock(product, variantKey, ingredientById, cartReservations) : null;
+    const badge      = selectionComplete ? stockBadge(effStock) : null;
+    const outOfStock = capacity !== null && capacity === 0;
+    const atMax      = capacity !== null && inCart >= capacity;
     const canAdd     = selectionComplete && !outOfStock && !atMax;
 
     const allSizes = getAvailableSizes(product);
@@ -346,8 +370,8 @@ export default function Cobrar(props: {
                 <button onClick={() => {
                     const product = allProducts.find((p) => p.id === item.productId);
                     if (product) {
-                      const stock = getEffectiveStock(product, item.variantKey, ingredientById, cartReservations);
-                      if (stock !== null && item.quantity >= stock) return;
+                      const capacity = getTotalCapacity(product, item.variantKey, ingredientById);
+                      if (capacity !== null && item.quantity >= capacity) return;
                     }
                     setOrderItems((prev) => prev.map((i) => i.key === item.key ? { ...i, quantity: i.quantity + 1 } : i));
                   }} className="w-7 h-7 flex items-center justify-center rounded-md bg-amber-800 hover:bg-amber-700 text-white text-sm font-bold cursor-pointer">+</button>
