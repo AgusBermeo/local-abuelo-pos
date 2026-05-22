@@ -139,6 +139,10 @@ export default function Home() {
   const deleteSale      = (id: number) => setSales((prev) => prev.filter((s) => s.id !== id));
   const markDelivered   = (id: number) => setSales((prev) => prev.map((s) => s.id === id ? { ...s, status: "delivered" } : s));
   const unmarkDelivered = (id: number) => setSales((prev) => prev.map((s) => s.id === id ? { ...s, status: "pending"   } : s));
+  const editSale = (id: number, date: Date, paymentMethod: PaymentMethod) =>
+  setSales((prev) =>
+    prev.map((s) => s.id === id ? { ...s, date, paymentMethod } : s)
+  );
 
   const foodProducts  = products.filter((p) => p.category === "Comida");
   const drinkProducts = products.filter((p) => p.category === "Bebida");
@@ -150,7 +154,7 @@ export default function Home() {
     },
     {
       label: "📋 Ventas",
-      content: <Ventas sales={sales} onDelete={deleteSale} onMarkDelivered={markDelivered} onUnmarkDelivered={unmarkDelivered} />,
+      content: <Ventas sales={sales} onDelete={deleteSale} onMarkDelivered={markDelivered} onUnmarkDelivered={unmarkDelivered} onEdit={editSale} />,
     },
     {
       label: "📦 Inventario",

@@ -48,11 +48,13 @@ export default function Ventas({
   onDelete,
   onMarkDelivered,
   onUnmarkDelivered,
+  onEdit,
 }: {
   sales: Sale[];
   onDelete: (id: number) => void;
   onMarkDelivered: (id: number) => void;
   onUnmarkDelivered: (id: number) => void;
+  onEdit: (id: number, date: Date, paymentMethod: PaymentMethod) => void;
 }) {
   const todayStr = toLocalDateString(new Date());
   const [startDate, setStartDate] = useState<string>("");
@@ -63,6 +65,32 @@ export default function Ventas({
   const [unmarkTarget, setUnmarkTarget] = useState<Sale | null>(null);
   const [unmarkStep, setUnmarkStep] = useState<1 | 2>(1);
   const [unmarkConfirmText, setUnmarkConfirmText] = useState("");
+  const [editTarget, setEditTarget] = useState<Sale | null>(null);
+  const [editDate, setEditDate] = useState("");
+  const [editTime, setEditTime] = useState("");
+  const [editPayment, setEditPayment] = useState<PaymentMethod>("efectivo");
+
+  const openEditModal = (sale: Sale) => {
+    const d = new Date(sale.date);
+    setEditDate(toLocalDateString(d));
+    setEditTime(
+      `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+    );
+    setEditPayment(sale.paymentMethod ?? "efectivo");
+    setEditTarget(sale);
+  };
+
+  const closeEditModal = () => setEditTarget(null);
+
+  const confirmEdit = () => {
+    if (!editTarget) return;
+    const [year, month, day] = editDate.split("-").map(Number);
+    const [hours, minutes] = editTime.split(":").map(Number);
+    const newDate = new Date(year, month - 1, day, hours, minutes,
+      new Date(editTarget.date).getSeconds());
+    onEdit(editTarget.id, newDate, editPayment);
+    closeEditModal();
+  };
 
   const setToday = () => {
     setStartDate(todayStr);
@@ -316,6 +344,14 @@ export default function Ventas({
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-amber-400">${sale.total.toFixed(2)}</span>
                     <button
+                      onClick={() => openEditModal(sale)}
+                      className="w-8 h-8 flex items-center justify-center rounded-md border-2 border-amber-600 hover:bg-amber-800 text-amber-500 transition-colors cursor-pointer"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
+                      </svg>
+                    </button>
+                    <button
                       onClick={() => { setDeleteTarget(sale); setDeleteConfirmText(""); }}
                       className="w-8 h-8 flex items-center justify-center rounded-md border-2 border-amber-600 hover:bg-amber-800 text-amber-500 transition-colors cursor-pointer"
                     >
@@ -547,6 +583,98 @@ export default function Ventas({
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Edit sale modal */}
+      {editTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={closeEditModal}
+          />
+          <div className="relative bg-amber-950 border-2 border-amber-600 rounded-xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-5">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">✏️</span>
+              <h2 className="text-amber-400 font-bold text-base uppercase tracking-widest">
+                Editar pedido
+              </h2>
+            </div>
+
+            {/* Fecha */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] uppercase tracking-widest text-yellow-700">Fecha</label>
+              <input
+                type="date"
+                value={editDate}
+                onChange={(e) => setEditDate(e.target.value)}
+                className="bg-amber-950/60 border-2 border-amber-800 rounded-lg px-4 py-2.5 text-amber-100 text-sm focus:outline-none focus:border-amber-500 cursor-pointer"
+              />
+            </div>
+
+            {/* Hora */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] uppercase tracking-widest text-yellow-700">Hora</label>
+              <input
+                type="time"
+                value={editTime}
+                onChange={(e) => setEditTime(e.target.value)}
+                className="bg-amber-950/60 border-2 border-amber-800 rounded-lg px-4 py-2.5 text-amber-100 text-sm focus:outline-none focus:border-amber-500 cursor-pointer"
+              />
+            </div>
+
+            {/* Forma de pago */}
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] uppercase tracking-widest text-yellow-700">Forma de pago</label>
+              <div className="flex flex-col gap-2">
+                {(Object.entries(PAYMENT_LABELS) as [PaymentMethod, typeof PAYMENT_LABELS[PaymentMethod]][]).map(
+                  ([key, { label, emoji, classes }]) => (
+                    <button
+                      key={key}
+                      onClick={() => setEditPayment(key)}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left cursor-pointer transition-all ${
+                        editPayment === key
+                          ? "border-amber-500 bg-amber-900/60"
+                          : "border-amber-800 hover:border-amber-600 bg-amber-900/20"
+                      }`}
+                    >
+                      <span className="text-xl leading-none">{emoji}</span>
+                      <span className={`font-bold text-sm ${editPayment === key ? "text-amber-400" : "text-amber-200"}`}>
+                        {label}
+                      </span>
+                      <div
+                        className={`ml-auto w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                          editPayment === key ? "border-amber-500 bg-amber-500" : "border-amber-700"
+                        }`}
+                      >
+                        {editPayment === key && <div className="w-1.5 h-1.5 rounded-full bg-amber-950" />}
+                      </div>
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={closeEditModal}
+                className="flex-1 py-2.5 border-2 border-amber-800 text-amber-700 hover:border-amber-600 hover:text-amber-500 rounded-lg text-sm font-bold cursor-pointer transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmEdit}
+                disabled={!editDate || !editTime}
+                className={`flex-1 py-2.5 rounded-lg text-sm font-bold uppercase tracking-widest transition-colors ${
+                  editDate && editTime
+                    ? "bg-amber-500 hover:bg-amber-400 text-amber-950 cursor-pointer"
+                    : "bg-amber-900/40 text-amber-800 cursor-not-allowed"
+                }`}
+              >
+                Guardar
+              </button>
+            </div>
           </div>
         </div>
       )}
