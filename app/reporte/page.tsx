@@ -259,41 +259,96 @@ function HistorialSection({ sales }: { sales: Sale[] }) {
   );
 }
 
-// ── Ingredientes (Comida only) ────────────────────────────────────────────────
+// ── SVG Pie Chart ─────────────────────────────────────────────────────────────
+type PieSlice = { label: string; value: number; color: string };
+
+function PieChart({ slices, size = 120 }: { slices: PieSlice[]; size?: number }) {
+  const total = slices.reduce((s, x) => s + x.value, 0);
+  if (total === 0) return null;
+
+  const cx = size / 2;
+  const cy = size / 2;
+  const r  = size / 2 - 6;
+
+  // Build SVG arc paths
+  let cumAngle = -Math.PI / 2; // start at top
+  const paths = slices.map((slice) => {
+    const angle = (slice.value / total) * 2 * Math.PI;
+    const x1 = cx + r * Math.cos(cumAngle);
+    const y1 = cy + r * Math.sin(cumAngle);
+    cumAngle += angle;
+    const x2 = cx + r * Math.cos(cumAngle);
+    const y2 = cy + r * Math.sin(cumAngle);
+    const large = angle > Math.PI ? 1 : 0;
+    // If only one slice, draw full circle as two arcs
+    if (slices.length === 1) {
+      return (
+        <circle key={slice.label} cx={cx} cy={cy} r={r} fill={slice.color} />
+      );
+    }
+    return (
+      <path
+        key={slice.label}
+        d={`M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z`}
+        fill={slice.color}
+        stroke="#1c0a00"
+        strokeWidth="1.5"
+      />
+    );
+  });
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {paths}
+      {/* center hole */}
+      <circle cx={cx} cy={cy} r={r * 0.42} fill="#1c0a00" />
+    </svg>
+  );
+}
+
+// ── Palettes ──────────────────────────────────────────────────────────────────
+// Relleno: warm reds/ambers for Carne & Pollo
+const PIE_COLORS_RELLENO = ["#ef4444", "#f59e0b", "#f97316", "#fbbf24", "#dc2626"];
+// Tamaño: cool blues for Masa Grande / Normal / Bocadito
+const PIE_COLORS_TAMANO  = ["#3b82f6", "#06b6d4", "#8b5cf6", "#0ea5e9", "#6366f1"];
+
+// ── Explicit name-based classification ───────────────────────────────────────
+// Relleno: ingredients whose name contains "carne" or "pollo" (case-insensitive)
+// Tamaño:  ingredients whose name contains "masa" (case-insensitive)
+// Anything else is shown in whichever group it falls into by ingredient name.
+function classifyIngredient(name: string): "relleno" | "tamano" | "other" {
+  const n = name.toLowerCase();
+  if (n.includes("carne") || n.includes("pollo")) return "relleno";
+  if (n.includes("masa"))                          return "tamano";
+  // Fallback: if name hints at size words
+  if (n.includes("grande") || n.includes("normal") || n.includes("bocadito")) return "tamano";
+  return "other";
+}
+
 function IngredientesSection({
   sales, products, ingredients,
 }: {
   sales: Sale[]; products: Product[]; ingredients: Ingredient[];
 }) {
-  // Build a name→product map for lookup
-  const productByVariantName: Record<string, Product> = {};
-  for (const p of products) {
-    if (p.category !== "Comida") continue;
-    // We map by product name prefix since sale item names start with product.name
-    productByVariantName[p.name] = p;
-  }
-
-  // Accumulate ingredient consumption across all sales
+  // ── Accumulate total consumption per ingredient across all food sales ─────────
   const ingConsumed: Record<string, number> = {};
 
   for (const sale of sales) {
     for (const item of sale.items) {
-      // Find the product by matching name
       const product = products.find((p) => p.category === "Comida" && item.name.startsWith(p.name));
       if (!product) continue;
 
-      // Try to reconstruct variantKey from item name
-      // Item name format: "<product.name> [sizeLabel] [fillingLabel]"
       const nameSuffix = item.name.slice(product.name.length).trim().toLowerCase();
-
-      // Try all variant keys to find which one matches
       let matched = false;
+
       for (const [vk, usage] of Object.entries(product.ingredientMap)) {
-        // variantKey = "sizeKey-fillingKey"
-        const [sizeKey, fillingKey] = vk.split("-");
-        // Check if size label or filling label appears in the suffix
-        const sizeMatch  = !sizeKey  || sizeKey  === "single" || nameSuffix.includes(sizeKey.toLowerCase());
-        const fillMatch  = !fillingKey || fillingKey === "none" || nameSuffix.includes(fillingKey.toLowerCase());
+        const dashIdx    = vk.lastIndexOf("-");
+        const sizeKey    = dashIdx >= 0 ? vk.slice(0, dashIdx) : vk;
+        const fillingKey = dashIdx >= 0 ? vk.slice(dashIdx + 1) : "none";
+
+        const sizeMatch = sizeKey === "single" || nameSuffix.includes(sizeKey.toLowerCase());
+        const fillMatch = fillingKey === "none"  || nameSuffix.includes(fillingKey.toLowerCase());
+
         if (sizeMatch && fillMatch) {
           for (const [ingId, qtyPerUnit] of Object.entries(usage)) {
             ingConsumed[ingId] = (ingConsumed[ingId] ?? 0) + qtyPerUnit * item.quantity;
@@ -302,7 +357,7 @@ function IngredientesSection({
           break;
         }
       }
-      // Fallback: if product has any ingredientMap entries, try the first one
+      // Fallback: first variant
       if (!matched) {
         const entries = Object.entries(product.ingredientMap);
         if (entries.length > 0) {
@@ -315,12 +370,26 @@ function IngredientesSection({
     }
   }
 
-  const rows = ingredients
-    .map((ing) => ({ ing, consumed: ingConsumed[ing.id] ?? 0 }))
-    .filter(({ consumed }) => consumed > 0)
-    .sort((a, b) => b.consumed - a.consumed);
+  // ── Split ingredients into the two fixed categories ────────────────────────
+  type IngRow = { ing: Ingredient; consumed: number };
 
-  if (rows.length === 0) {
+  const rellenoRows: IngRow[] = [];
+  const tamanoRows:  IngRow[] = [];
+
+  for (const ing of ingredients) {
+    const consumed = ingConsumed[ing.id] ?? 0;
+    if (consumed === 0) continue;
+    const cat = classifyIngredient(ing.name);
+    if (cat === "relleno") rellenoRows.push({ ing, consumed });
+    else                   tamanoRows.push({ ing, consumed }); // "tamano" + "other" go here
+  }
+
+  rellenoRows.sort((a, b) => b.consumed - a.consumed);
+  tamanoRows.sort((a, b) => b.consumed - a.consumed);
+
+  const hasAny = rellenoRows.length > 0 || tamanoRows.length > 0;
+
+  if (!hasAny) {
     return (
       <div className="flex flex-col gap-2">
         <p className="text-amber-700 text-sm">Sin datos de consumo para este período.</p>
@@ -329,28 +398,109 @@ function IngredientesSection({
     );
   }
 
-  const maxConsumed = Math.max(...rows.map((r) => r.consumed), 1);
+  const rellenoSlices: PieSlice[] = rellenoRows.map((r, i) => ({
+    label: r.ing.name, value: r.consumed,
+    color: PIE_COLORS_RELLENO[i % PIE_COLORS_RELLENO.length],
+  }));
+  const tamanoSlices: PieSlice[] = tamanoRows.map((r, i) => ({
+    label: r.ing.name, value: r.consumed,
+    color: PIE_COLORS_TAMANO[i % PIE_COLORS_TAMANO.length],
+  }));
+
+  // ── Reusable panel: pie + legend + bar list ───────────────────────────────────
+  function PiePanel({
+    title, subtitle, rows, slices, accentText, borderColor, emptyMsg,
+  }: {
+    title: string; subtitle: string; rows: IngRow[]; slices: PieSlice[];
+    accentText: string; borderColor: string; emptyMsg: string;
+  }) {
+    const totalConsumed = rows.reduce((s, r) => s + r.consumed, 0);
+    const maxConsumed   = Math.max(...rows.map((r) => r.consumed), 1);
+
+    return (
+      <div className={`flex-1 flex flex-col gap-4 bg-amber-900/20 border-2 ${borderColor} rounded-xl p-4 min-w-0`}>
+        {/* Header */}
+        <div className="flex flex-col gap-0.5">
+          <p className={`text-[10px] uppercase tracking-widest font-bold ${accentText}`}>{title}</p>
+          <p className="text-[10px] text-amber-800">{subtitle}</p>
+        </div>
+
+        {rows.length === 0 ? (
+          <p className="text-amber-800 text-xs italic">{emptyMsg}</p>
+        ) : (
+          <>
+            {/* Pie chart centered */}
+            <div className="flex justify-center">
+              <PieChart slices={slices} size={120} />
+            </div>
+
+            {/* Legend */}
+            <div className="flex flex-col gap-1.5">
+              {rows.map((r, i) => {
+                const pct = totalConsumed > 0 ? ((r.consumed / totalConsumed) * 100).toFixed(0) : "0";
+                return (
+                  <div key={r.ing.id} className="flex items-center gap-2 min-w-0">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: slices[i]?.color }} />
+                    <span className="text-xs text-amber-200 flex-1 truncate">{r.ing.name}</span>
+                    <span className="text-[10px] font-bold tabular-nums shrink-0" style={{ color: slices[i]?.color }}>{pct}%</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Bar list with stock + consumed */}
+            <div className="flex flex-col gap-2 pt-2 border-t border-amber-800/40">
+              {rows.map(({ ing, consumed }, i) => (
+                <div key={ing.id} className="flex flex-col gap-0.5">
+                  <div className="flex justify-between items-baseline text-[11px]">
+                    <span className="text-amber-300 font-semibold truncate max-w-[55%]">{ing.name}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`text-[10px] ${ing.stock === 0 ? "text-red-400" : ing.stock <= 5 ? "text-orange-400" : "text-green-400"}`}>
+                        stock: {ing.stock}
+                      </span>
+                      <span className="text-amber-500 font-bold tabular-nums">−{consumed}</span>
+                    </div>
+                  </div>
+                  <div className="h-1.5 bg-amber-900/60 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${(consumed / maxConsumed) * 100}%`, background: slices[i]?.color }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-[10px] text-amber-700">Unidades descontadas del inventario según ventas de Comida en este período.</p>
-      {rows.map(({ ing, consumed }) => (
-        <div key={ing.id} className="flex flex-col gap-1.5">
-          <div className="flex justify-between items-baseline text-xs">
-            <span className="text-amber-200 font-semibold">{ing.name}</span>
-            <div className="flex items-center gap-3">
-              <span className="text-amber-700">Stock actual: <span className={`font-bold ${ing.stock === 0 ? "text-red-400" : ing.stock <= 5 ? "text-orange-400" : "text-green-400"}`}>{ing.stock}</span></span>
-              <span className="text-amber-500 font-bold tabular-nums">−{consumed} usados</span>
-            </div>
-          </div>
-          <div className="h-2 bg-amber-900 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-amber-500 rounded-full transition-all duration-500"
-              style={{ width: `${(consumed / maxConsumed) * 100}%` }}
-            />
-          </div>
-        </div>
-      ))}
+      <p className="text-[10px] text-amber-700">
+        Consumo separado por tipo de ingrediente. Stock actual en verde / naranja / rojo.
+      </p>
+      <div className="flex gap-3 items-start flex-col sm:flex-row">
+        <PiePanel
+          title="🥩 Relleno"
+          subtitle="Carne · Pollo"
+          rows={rellenoRows}
+          slices={rellenoSlices}
+          accentText="text-amber-400"
+          borderColor="border-amber-700/60"
+          emptyMsg="Sin datos de relleno"
+        />
+        <PiePanel
+          title="📐 Tamaño"
+          subtitle="Masa Grande · Normal · Bocadito"
+          rows={tamanoRows}
+          slices={tamanoSlices}
+          accentText="text-blue-400"
+          borderColor="border-blue-900/60"
+          emptyMsg="Sin datos de tamaño"
+        />
+      </div>
     </div>
   );
 }
