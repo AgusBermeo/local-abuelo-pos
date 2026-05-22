@@ -378,7 +378,7 @@ export default function Inventario({
   onAddProduct: (p: Product) => void; onDeleteProduct: (id: number) => void; onEditProduct: (p: Product) => void;
   onAddIngredient: (i: Ingredient) => void; onEditIngredient: (i: Ingredient) => void; onDeleteIngredient: (id: string) => void;
 }) {
-  const [section, setSection] = useState<"ingredientes" | "productos">("ingredientes");
+  const [section, setSection] = useState<"ingredientes" | "productos">("productos");
   const [filterCategory, setFilterCategory] = useState<"Todas" | "Comida" | "Bebida">("Todas");
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -465,7 +465,7 @@ export default function Inventario({
     <div className="w-full flex flex-col max-w-4xl mx-auto gap-4">
       {/* Section switcher */}
       <div className="flex bg-amber-900/40 border-2 border-amber-800 rounded-xl p-1 gap-1">
-        {([["ingredientes", "🧂 Ingredientes"], ["productos", "🍽️ Productos"]] as const).map(([key, label]) => (
+        {([["productos", "🍽️ Productos"], ["ingredientes", "🧂 Ingredientes"]] as const).map(([key, label]) => (
           <button key={key} onClick={() => setSection(key)}
             className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-widest cursor-pointer transition-colors ${section === key ? "bg-amber-500 text-amber-950" : "text-amber-700 hover:text-amber-500"}`}>
             {label}
