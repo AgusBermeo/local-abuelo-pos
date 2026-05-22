@@ -126,6 +126,8 @@ function stockBadge(stock: number | null): { label: string; cls: string } | null
   return { label: `${stock} disp.`, cls: "bg-green-900/30 text-green-500 border-green-800" };
 }
 
+
+
 export default function Cobrar(props: {
   foodProducts: Product[];
   drinkProducts: Product[];
@@ -138,6 +140,7 @@ export default function Cobrar(props: {
   const [discount,   setDiscount]   = useState<number>(0);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPayment,  setSelectedPayment]  = useState<PaymentMethod | null>(null);
+  const [showDiscount, setShowDiscount] = useState(false);
 
   const totalBlockRef    = useRef<HTMLDivElement>(null);
   const [isTotalVisible, setIsTotalVisible] = useState(false);
@@ -386,17 +389,36 @@ export default function Cobrar(props: {
           ))
         }
 
-        <div className="flex justify-end mt-4 gap-4 items-center">
-          <h3 className="font-semibold">Descuento</h3>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500 text-sm font-bold">$</span>
-            <input type="number" min={0} step={0.01} value={discount === 0 ? "" : discount}
-              onChange={(e) => { const v = parseFloat(e.target.value); setDiscount(isNaN(v) || v < 0 ? 0 : v); }}
-              placeholder="0.00"
-              className="w-28 text-center pl-7 bg-amber-900/30 border-2 border-amber-800 rounded-lg px-4 py-2.5 text-amber-100 text-sm focus:outline-none focus:border-amber-500" />
-          </div>
-          {discount > 0 && <span className="text-xs text-amber-600 font-semibold">-{Math.min(discount, subtotal).toFixed(2)} aplicado</span>}
+        <div className="flex justify-end mt-4">
+          <button
+            onClick={() => { setShowDiscount((v) => !v); if (showDiscount) setDiscount(0); }}
+            className={`flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold py-1.5 px-3 rounded-lg border-2 cursor-pointer transition-colors ${
+              showDiscount
+                ? "border-amber-500 text-amber-400 bg-amber-900/40"
+                : "border-amber-800 text-amber-700 hover:border-amber-600 hover:text-amber-500"
+            }`}
+          >
+            <span className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${showDiscount ? "bg-amber-500 border-amber-500" : "border-amber-700"}`}>
+              {showDiscount && <span className="text-amber-950 text-[9px] font-black leading-none">✓</span>}
+            </span>
+            Aplicar descuento
+          </button>
         </div>
+
+        {showDiscount && (
+          <div className="flex justify-end gap-4 items-center mt-2">
+            <h3 className="font-semibold text-sm">Descuento</h3>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500 text-sm font-bold">$</span>
+              <input type="number" min={0} step={0.01} value={discount === 0 ? "" : discount}
+                onChange={(e) => { const v = parseFloat(e.target.value); setDiscount(isNaN(v) || v < 0 ? 0 : v); }}
+                placeholder="0.00"
+                autoFocus
+                className="w-28 text-center pl-7 bg-amber-900/30 border-2 border-amber-800 rounded-lg px-4 py-2.5 text-amber-100 text-sm focus:outline-none focus:border-amber-500" />
+            </div>
+            {discount > 0 && <span className="text-xs text-amber-600 font-semibold">-${Math.min(discount, subtotal).toFixed(2)} aplicado</span>}
+          </div>
+        )}
 
         <div ref={totalBlockRef} className="mt-4 flex flex-col gap-1">
           {discount > 0 && <>
