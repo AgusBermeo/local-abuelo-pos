@@ -30,15 +30,16 @@ function toLocalDateStr(date: Date | string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-type Period = "today" | "week" | "month" | "all";
+type Period = "today" | "yesterday" | "week" | "month" | "all";
 
 function getPeriodSales(sales: Sale[], period: Period): Sale[] {
   const now = new Date();
   return sales.filter((s) => {
     const d = new Date(s.date);
-    if (period === "today") return toLocalDateStr(d) === toLocalDateStr(now);
-    if (period === "week")  { const w = new Date(now); w.setDate(now.getDate() - 6); return d >= w; }
-    if (period === "month") return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    if (period === "today")     return toLocalDateStr(d) === toLocalDateStr(now);
+    if (period === "yesterday") { const y = new Date(now); y.setDate(now.getDate() - 1); return toLocalDateStr(d) === toLocalDateStr(y); }
+    if (period === "week")      { const w = new Date(now); w.setDate(now.getDate() - 6); return d >= w; }
+    if (period === "month")     return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
     return true;
   });
 }
@@ -50,6 +51,10 @@ function getPrevPeriodSales(sales: Sale[], period: Period): Sale[] {
     if (period === "today") {
       const y = new Date(now); y.setDate(now.getDate() - 1);
       return toLocalDateStr(d) === toLocalDateStr(y);
+    }
+    if (period === "yesterday") {
+      const y2 = new Date(now); y2.setDate(now.getDate() - 2);
+      return toLocalDateStr(d) === toLocalDateStr(y2);
     }
     if (period === "week") {
       const end = new Date(now); end.setDate(now.getDate() - 7);
@@ -70,10 +75,10 @@ function delta(curr: number, prev: number): { pct: number; up: boolean; neutral:
   return { pct: Math.abs(pct), up: pct >= 0, neutral: false };
 }
 
-// Last N days date labels
-function lastNDays(n: number): string[] {
+// Last N days ending `endOffset` days ago (0 = today, 1 = yesterday, …)
+function lastNDays(n: number, endOffset = 0): string[] {
   return Array.from({ length: n }, (_, i) => {
-    const d = new Date(); d.setDate(d.getDate() - (n - 1 - i));
+    const d = new Date(); d.setDate(d.getDate() - endOffset - (n - 1 - i));
     return toLocalDateStr(d);
   });
 }
@@ -116,8 +121,8 @@ function StatCard({
 }
 
 // ── Bar chart (pure CSS, no lib) ──────────────────────────────────────────────
-function DailyBarChart({ sales, days }: { sales: Sale[]; days: number }) {
-  const dates = lastNDays(days);
+function DailyBarChart({ sales, days, endOffset = 0 }: { sales: Sale[]; days: number; endOffset?: number }) {
+  const dates = lastNDays(days, endOffset);
   const byDate: Record<string, { revenue: number; count: number }> = {};
   dates.forEach((d) => { byDate[d] = { revenue: 0, count: 0 }; });
   sales.forEach((s) => {
@@ -130,6 +135,9 @@ function DailyBarChart({ sales, days }: { sales: Sale[]; days: number }) {
   // Show only abbreviated day labels
   const dayNames = ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sá"];
 
+  // The "active" date is the last date in the range (today or yesterday)
+  const activeDate = toLocalDateStr((() => { const d = new Date(); d.setDate(d.getDate() - endOffset); return d; })());
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-end gap-1 h-28">
@@ -137,7 +145,7 @@ function DailyBarChart({ sales, days }: { sales: Sale[]; days: number }) {
           const { revenue, count } = byDate[date];
           const heightPct = (revenue / maxRev) * 100;
           const d = new Date(date + "T12:00:00");
-          const isToday = date === toLocalDateStr(new Date());
+          const isActive = date === activeDate;
           return (
             <div key={date} className="flex-1 flex flex-col items-center gap-1 group relative">
               {/* Tooltip */}
@@ -147,11 +155,11 @@ function DailyBarChart({ sales, days }: { sales: Sale[]; days: number }) {
               </div>
               <div className="w-full flex items-end" style={{ height: "100px" }}>
                 <div
-                  className={`w-full rounded-t-sm transition-all duration-500 ${isToday ? "bg-amber-400" : "bg-amber-700 group-hover:bg-amber-500"}`}
+                  className={`w-full rounded-t-sm transition-all duration-500 ${isActive ? "bg-amber-400" : "bg-amber-700 group-hover:bg-amber-500"}`}
                   style={{ height: `${Math.max(heightPct, revenue > 0 ? 4 : 0)}%` }}
                 />
               </div>
-              <span className={`text-[9px] uppercase font-bold ${isToday ? "text-amber-400" : "text-amber-700"}`}>
+              <span className={`text-[9px] uppercase font-bold ${isActive ? "text-amber-400" : "text-amber-700"}`}>
                 {dayNames[d.getDay()]}
               </span>
             </div>
@@ -541,21 +549,24 @@ export default function ReportePage() {
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 5);
 
-  // Chart days based on period
-  const chartDays = period === "today" ? 1 : period === "week" ? 7 : period === "month" ? 30 : 14;
+  // Chart days + end offset based on period
+  const chartDays      = period === "today" || period === "yesterday" ? 1 : period === "week" ? 7 : period === "month" ? 30 : 14;
+  const chartEndOffset = period === "yesterday" ? 1 : 0;
 
   const PERIODS: { key: Period; label: string }[] = [
-    { key: "today", label: "Hoy" },
-    { key: "week",  label: "7 días" },
-    { key: "month", label: "Mes" },
-    { key: "all",   label: "Total" },
+    { key: "today",     label: "Hoy"   },
+    { key: "yesterday", label: "Ayer"  },
+    { key: "week",      label: "7 días" },
+    { key: "month",     label: "Mes"   },
+    { key: "all",       label: "Total" },
   ];
 
   const prevLabel: Record<Period, string> = {
-    today: "ayer",
-    week:  "semana pasada",
-    month: "mes pasado",
-    all:   "—",
+    today:     "ayer",
+    yesterday: "anteayer",
+    week:      "semana pasada",
+    month:     "mes pasado",
+    all:       "—",
   };
 
   return (
@@ -600,7 +611,7 @@ export default function ReportePage() {
         <SectionCard title="📈 Ventas por día">
           {periodSales.length === 0
             ? <p className="text-amber-700 text-sm">Sin datos para este período.</p>
-            : <DailyBarChart sales={periodSales} days={chartDays} />
+            : <DailyBarChart sales={periodSales} days={chartDays} endOffset={chartEndOffset} />
           }
         </SectionCard>
 

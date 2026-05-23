@@ -121,7 +121,8 @@ export default function Ventas({
     return [...filtered].sort((a, b) => {
       const aP = a.status === "pending" || !a.status ? 0 : 1;
       const bP = b.status === "pending" || !b.status ? 0 : 1;
-      return aP - bP;
+      if (aP !== bP) return aP - bP;
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
   })();
 
