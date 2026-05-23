@@ -513,6 +513,180 @@ function IngredientesSection({
   );
 }
 
+// ── Variantes vendidas (Tamaño × Relleno) ────────────────────────────────────
+function VariantesSection({ sales, products }: { sales: Sale[]; products: Product[] }) {
+  // Accumulate quantities per size+filling combination only (no product grouping)
+  const variantCount: Record<string, number> = {};
+
+  for (const sale of sales) {
+    for (const item of sale.items) {
+      const product = products.find(
+        (p) => p.category === "Comida" && item.name.startsWith(p.name)
+      );
+      if (!product) continue;
+
+      const suffix = item.name.slice(product.name.length).trim().toLowerCase();
+
+      let matchedLabel: string | null = null;
+
+      for (const vk of Object.keys(product.ingredientMap)) {
+        const dashIdx    = vk.lastIndexOf("-");
+        const sizeKey    = dashIdx >= 0 ? vk.slice(0, dashIdx)   : vk;
+        const fillingKey = dashIdx >= 0 ? vk.slice(dashIdx + 1)  : "none";
+
+        const sizeMatch    = sizeKey    === "single" || suffix.includes(sizeKey.toLowerCase());
+        const fillingMatch = fillingKey === "none"   || suffix.includes(fillingKey.toLowerCase());
+
+        if (sizeMatch && fillingMatch) {
+          const sizeLabel    = sizeKey    !== "single" ? sizeKey.charAt(0).toUpperCase()    + sizeKey.slice(1)    : null;
+          const fillingLabel = fillingKey !== "none"   ? fillingKey.charAt(0).toUpperCase() + fillingKey.slice(1) : null;
+          matchedLabel = [sizeLabel, fillingLabel].filter(Boolean).join(" · ");
+          break;
+        }
+      }
+
+      if (!matchedLabel) {
+        matchedLabel = suffix
+          ? suffix.charAt(0).toUpperCase() + suffix.slice(1)
+          : "Sin variante";
+      }
+
+      variantCount[matchedLabel] = (variantCount[matchedLabel] ?? 0) + item.quantity;
+    }
+  }
+
+  const rows = Object.entries(variantCount)
+    .map(([label, qty]) => ({ label, qty }))
+    .sort((a, b) => b.qty - a.qty);
+
+  if (rows.length === 0) {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-amber-700 text-sm">Sin datos de variantes para este período.</p>
+        <p className="text-[10px] text-amber-800">
+          Asegúrate de haber configurado ingredientes por variante en el Inventario.
+        </p>
+      </div>
+    );
+  }
+
+  const maxQty  = rows[0].qty;
+  const total   = rows.reduce((s, r) => s + r.qty, 0);
+
+  const BAR_COLORS = [
+    "bg-amber-500", "bg-orange-500", "bg-red-500",
+    "bg-yellow-500", "bg-lime-500",  "bg-teal-500",
+    "bg-blue-500",  "bg-violet-500", "bg-pink-500",
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-[10px] text-amber-700">
+        Unidades totales vendidas por combinación de tamaño y relleno, todos los productos.
+      </p>
+
+      <div className="flex flex-col gap-3">
+        {rows.map(({ label, qty }, idx) => {
+          const barColor  = BAR_COLORS[idx % BAR_COLORS.length];
+          const textColor = barColor.replace("bg-", "text-");
+          return (
+            <div key={label} className="flex flex-col gap-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-amber-200 font-semibold">{label}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-amber-700 tabular-nums">
+                    {((qty / total) * 100).toFixed(0)}%
+                  </span>
+                  <span className={`font-bold tabular-nums text-sm ${textColor}`}>
+                    ×{qty}
+                  </span>
+                </div>
+              </div>
+              <div className="h-2 bg-amber-900/60 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+                  style={{ width: `${(qty / maxQty) * 100}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="text-[10px] text-amber-800 text-right pt-1 border-t border-amber-800/40">
+        Total: {total} unidades
+      </p>
+    </div>
+  );
+}
+
+// ── Top Products Section ──────────────────────────────────────────────────────
+type SortMode = "revenue" | "quantity";
+
+function TopProductsSection({ productTotals }: { productTotals: Record<string, { quantity: number; revenue: number }> }) {
+  const [sortMode, setSortMode] = useState<SortMode>("revenue");
+
+  const topProducts = Object.entries(productTotals)
+    .map(([name, v]) => ({ name, ...v }))
+    .sort((a, b) => sortMode === "revenue" ? b.revenue - a.revenue : b.quantity - a.quantity)
+    .slice(0, 5);
+
+  const maxVal = topProducts.length > 0
+    ? (sortMode === "revenue" ? topProducts[0].revenue : topProducts[0].quantity)
+    : 1;
+
+  return (
+    <SectionCard title="🏆 Productos más vendidos">
+      {/* Sort toggle */}
+      <div className="flex bg-amber-900/40 border border-amber-800 rounded-lg p-0.5 gap-0.5 self-start">
+        {([["revenue", "💰 Recaudado"], ["quantity", "🔢 Cantidad"]] as [SortMode, string][]).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setSortMode(key)}
+            className={`py-1.5 px-3 rounded-md text-[11px] font-bold uppercase tracking-widest cursor-pointer transition-colors ${
+              sortMode === key
+                ? "bg-amber-500 text-amber-950"
+                : "text-amber-700 hover:text-amber-500"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {topProducts.length === 0 ? (
+        <p className="text-amber-700 text-sm">Sin datos para este período.</p>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {topProducts.map(({ name, quantity, revenue }, idx) => {
+            const barVal = sortMode === "revenue" ? revenue : quantity;
+            return (
+              <div key={name} className="flex flex-col gap-1 py-2 border-b border-amber-800/60 last:border-0">
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-black text-amber-700 w-4 shrink-0">#{idx + 1}</span>
+                  <span className="flex-1 text-sm text-amber-100 truncate">{name}</span>
+                  <span className={`text-xs shrink-0 tabular-nums font-semibold ${sortMode === "quantity" ? "text-amber-400" : "text-amber-700"}`}>
+                    ×{quantity}
+                  </span>
+                  <span className={`text-sm font-bold tabular-nums shrink-0 w-16 text-right ${sortMode === "revenue" ? "text-amber-400" : "text-amber-500"}`}>
+                    ${revenue.toFixed(2)}
+                  </span>
+                </div>
+                <div className="ml-7 h-1.5 bg-amber-900 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${sortMode === "revenue" ? "bg-amber-500" : "bg-blue-500"}`}
+                    style={{ width: `${(barVal / maxVal) * 100}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function ReportePage() {
   const [sales]       = useLocalStorage<Sale[]>      ("abuelo-sales",       []);
@@ -665,36 +839,19 @@ export default function ReportePage() {
         </SectionCard>
 
         {/* ── Productos más vendidos ── */}
-        <SectionCard title="🏆 Productos más vendidos">
-          {topProducts.length === 0
-            ? <p className="text-amber-700 text-sm">Sin datos para este período.</p>
-            : (
-              <div className="flex flex-col gap-1">
-                {topProducts.map(({ name, quantity, revenue }, idx) => {
-                  const maxRev = topProducts[0].revenue;
-                  return (
-                    <div key={name} className="flex flex-col gap-1 py-2 border-b border-amber-800/60 last:border-0">
-                      <div className="flex items-center gap-3">
-                        <span className="text-[10px] font-black text-amber-700 w-4 shrink-0">#{idx + 1}</span>
-                        <span className="flex-1 text-sm text-amber-100 truncate">{name}</span>
-                        <span className="text-xs text-amber-700 shrink-0">×{quantity}</span>
-                        <span className="text-sm font-bold text-amber-500 tabular-nums shrink-0 w-16 text-right">${revenue.toFixed(2)}</span>
-                      </div>
-                      <div className="ml-7 h-1 bg-amber-900 rounded-full overflow-hidden">
-                        <div className="h-full bg-amber-600 rounded-full" style={{ width: `${(revenue / maxRev) * 100}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )
-          }
-        </SectionCard>
+        <TopProductsSection productTotals={productTotals} />
 
         {/* ── Consumo de ingredientes (Comida) ── */}
         {ingredients.length > 0 && (
           <SectionCard title="🧂 Consumo de ingredientes (Comida)">
             <IngredientesSection sales={periodSales} products={products} ingredients={ingredients} />
+          </SectionCard>
+        )}
+
+        {/* ── Variantes vendidas (Tamaño × Relleno) ── */}
+        {products.some((p) => Object.keys(p.ingredientMap ?? {}).length > 0) && (
+          <SectionCard title="🥟 Combinaciones vendidas (Tamaño · Relleno)">
+            <VariantesSection sales={periodSales} products={products} />
           </SectionCard>
         )}
 
