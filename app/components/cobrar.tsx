@@ -21,9 +21,7 @@ type CartEntry = {
   quantity: number;
 };
 
-type SaleItem          = { name: string; quantity: number; price: number };
-type IngredientDeduction = { ingredientId: string; quantity: number };
-type PaymentMethod     = "efectivo" | "transferencia" | "deuna";
+type SaleItem = { name: string; quantity: number; price: number };
 
 const PAYMENT_OPTIONS: { value: PaymentMethod; label: string; emoji: string; desc: string }[] = [
   { value: "efectivo",      label: "Efectivo",      emoji: "💵", desc: "Pago en billetes o monedas" },
