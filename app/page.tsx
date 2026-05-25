@@ -100,6 +100,7 @@ const INITIAL_PRODUCTS: Product[] = [
       bocadito: [
         { minQty: 1,  pricePerUnit: 0.60 },
         { minQty: 10, pricePerUnit: 0.55 },
+        { minQty: 20, pricePerUnit: 0.50 },
       ],
     },
     ingredientMap: {},
@@ -126,6 +127,14 @@ export default function Home() {
   const [ingredients, setIngredients] = useLocalStorage<Ingredient[]>("abuelo-ingredients", []);
   const [sales,       setSales]       = useLocalStorage<Sale[]>      ("abuelo-sales",       []);
   const [activeTab,   setActiveTab]   = useState(0);
+
+  const normalizedProducts = products.map((product) => ({
+    ...product,
+    tieredPrices: product.tieredPrices ?? {},
+    sizeLabels: product.sizeLabels ?? {},
+    fillingLabels: product.fillingLabels ?? {},
+    ingredientMap: product.ingredientMap ?? {},
+  }));
 
   const addSale = (
     items: OrderItem[],
@@ -180,8 +189,8 @@ export default function Home() {
   const editSale = (id: number, date: Date, paymentMethod: PaymentMethod) =>
     setSales((prev) => prev.map((s) => s.id === id ? { ...s, date, paymentMethod } : s));
 
-  const foodProducts  = products.filter((p) => p.category === "Comida");
-  const drinkProducts = products.filter((p) => p.category === "Bebida");
+  const foodProducts  = normalizedProducts.filter((p) => p.category === "Comida");
+  const drinkProducts = normalizedProducts.filter((p) => p.category === "Bebida");
 
   const TABS = [
     {
@@ -211,7 +220,7 @@ export default function Home() {
       label: "📦 Inventario",
       content: (
         <Inventario
-          products={products}
+          products={normalizedProducts}
           ingredients={ingredients}
           onAddProduct={addProduct}
           onDeleteProduct={deleteProduct}

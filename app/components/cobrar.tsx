@@ -32,14 +32,14 @@ const PAYMENT_OPTIONS: { value: PaymentMethod; label: string; emoji: string; des
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getAvailableSizes(product: Product): Array<{ key: string; label: string }> {
-  return Object.entries(product.sizeLabels).filter(([key]) => {
-    const tiers = product.tieredPrices[key];
+  return Object.entries(product.sizeLabels ?? {}).filter(([key]) => {
+    const tiers = product.tieredPrices?.[key];
     return tiers && tiers.some((t) => t.pricePerUnit > 0);
   }).map(([key, label]) => ({ key, label }));
 }
 
 function getAvailableFillings(product: Product): Array<{ key: string; label: string }> {
-  return Object.entries(product.fillingLabels).map(([key, label]) => ({ key, label }));
+  return Object.entries(product.fillingLabels ?? {}).map(([key, label]) => ({ key, label }));
 }
 
 function makeCartKey(productId: number, sizeKey: string, fillingKey: string): string {
