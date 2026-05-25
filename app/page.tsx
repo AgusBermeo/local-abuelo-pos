@@ -6,7 +6,7 @@ import Cobrar from "./components/cobrar";
 import Ventas from "./components/ventas";
 import Inventario from "./components/inventario";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 
 // ── Price tier ────────────────────────────────────────────────────────────────
@@ -126,10 +126,6 @@ export default function Home() {
   const [ingredients, setIngredients] = useLocalStorage<Ingredient[]>("abuelo-ingredients", []);
   const [sales,       setSales]       = useLocalStorage<Sale[]>      ("abuelo-sales",       []);
   const [activeTab,   setActiveTab]   = useState(0);
-
-  useEffect(() => {
-    window.localStorage.clear();
-  }, []);
 
   const addSale = (
     items: OrderItem[],
