@@ -6,7 +6,7 @@ import Cobrar from "./components/cobrar";
 import Ventas from "./components/ventas";
 import Inventario from "./components/inventario";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 
 // ── Price tier ────────────────────────────────────────────────────────────────
@@ -122,10 +122,14 @@ export type Sale = {
 };
 
 export default function Home() {
-  const [products,    setProducts]    = useLocalStorage<Product[]>   ("abuelo-products-v2",    INITIAL_PRODUCTS);
+  const [products,    setProducts]    = useLocalStorage<Product[]>   ("abuelo-products",    INITIAL_PRODUCTS);
   const [ingredients, setIngredients] = useLocalStorage<Ingredient[]>("abuelo-ingredients", []);
   const [sales,       setSales]       = useLocalStorage<Sale[]>      ("abuelo-sales",       []);
   const [activeTab,   setActiveTab]   = useState(0);
+
+  useEffect(() => {
+    window.localStorage.clear();
+  }, []);
 
   const addSale = (
     items: OrderItem[],
