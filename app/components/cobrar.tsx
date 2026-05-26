@@ -310,14 +310,17 @@ export default function Cobrar(props: {
   // ── ProductCard ─────────────────────────────────────────────────────────────
 
   const ProductCard = ({ product }: { product: Product }) => {
-    const sizes    = getAvailableSizes(product);
+    const isBebida = product.category === "Bebida";
+    const sizes    = isBebida
+      ? [{ key: "single", label: product.size ?? "Unidad" }]
+      : getAvailableSizes(product);
     const fillings = getAvailableFillings(product);
     const hasRelleno = fillings.length > 0;
 
     const currentFilling = hasRelleno ? (selectedFilling[product.id] ?? null) : "none";
 
     return (
-      <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4 flex flex-col col-span-2 gap-3">
+      <div className={`bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4 flex flex-col ${isBebida ? "col-span-1" : "col-span-2"} gap-3`}>
         <h2 className="font-bold text-sm">{product.name}</h2>
 
         {/* Relleno selector */}
