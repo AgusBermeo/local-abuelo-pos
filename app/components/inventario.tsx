@@ -354,7 +354,7 @@ function productToForm(product: Product): ProductForm {
 
     return {
       ...EMPTY_FORM, name: product.name, category: "Comida",
-      hasRelleno: Object.keys(product.fillingLabels).length > 0,
+      hasRelleno: true,
       tierRows, sizeEnabled, ingredientMap,
     };
   }
@@ -435,14 +435,6 @@ function ProductFormFields({
       {/* Comida: size + tier editor */}
       {form.category === "Comida" && (
         <>
-          <div className="flex flex-col gap-3 bg-amber-900/30 border border-amber-800 rounded-lg p-3">
-            <Toggle
-              label="Tiene relleno (Carne / Pollo)"
-              value={form.hasRelleno}
-              onChange={() => setForm((p) => ({ ...p, hasRelleno: !p.hasRelleno }))}
-            />
-          </div>
-
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-0.5">
               <p className="text-[10px] uppercase tracking-widest text-yellow-700">Tamaños y precios escalonados</p>

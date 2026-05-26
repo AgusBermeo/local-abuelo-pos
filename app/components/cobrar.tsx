@@ -76,10 +76,8 @@ function getEffectiveCapacity(
     if (qtyPerUnit <= 0) continue;
     const ing = ingredientById[ingId];
     if (!ing) continue;
-    // Total stock available net of all cart reservations for this ingredient
     const reserved  = cartReservations[ingId] ?? 0;
     const available = Math.max(0, ing.stock - reserved);
-    // How many MORE units can we add for this ingredient
     min = Math.min(min, Math.floor(available / qtyPerUnit));
   }
   return min === Infinity ? null : currentQtyInCart + min;
@@ -242,8 +240,6 @@ export default function Cobrar(props: {
 
   // ── Derived totals ──────────────────────────────────────────────────────────
 
-  // Per-size totals needed for tier pricing (within same product)
-  // We group cart entries by (productId, sizeKey) to sum quantities for tier lookup
   const sizeTotals: Record<string, number> = {};
   for (const entry of cart) {
     const k = `${entry.productId}::${entry.sizeKey}`;
@@ -253,6 +249,7 @@ export default function Cobrar(props: {
   function getEntryPrice(entry: CartEntry): number {
     const product = allProducts.find((p) => p.id === entry.productId);
     if (!product) return 0;
+    // Bebida: flat price
     if (!product.tieredPrices[entry.sizeKey]) return product.price ?? 0;
     const totalQtyForSize = sizeTotals[`${entry.productId}::${entry.sizeKey}`] ?? entry.quantity;
     return getTierPrice(product, entry.sizeKey, totalQtyForSize);
@@ -276,7 +273,11 @@ export default function Cobrar(props: {
       const fillingLabel = entry.fillingKey !== "none"
         ? (product?.fillingLabels[entry.fillingKey] ?? entry.fillingKey)
         : null;
-      const name = [product?.name ?? "", sizeLabel, fillingLabel].filter(Boolean).join(" ");
+      // For Bebida (single), just use product name (+ size presentation if available)
+      const isBebida = entry.sizeKey === "single";
+      const name = isBebida
+        ? product?.name ?? ""
+        : [product?.name ?? "", sizeLabel, fillingLabel].filter(Boolean).join(" ");
       return { name, quantity: entry.quantity, price: getEntryPrice(entry) };
     });
 
@@ -317,6 +318,68 @@ export default function Cobrar(props: {
 
     const currentFilling = hasRelleno ? (selectedFilling[product.id] ?? null) : "none";
 
+    // ── Bebida: precio plano, sin tamaños ─────────────────────────────────────
+    if (sizes.length === 0 && product.price !== undefined) {
+      const ck    = makeCartKey(product.id, "single", "none");
+      const entry = cart.find((e) => e.key === ck);
+      const qty   = entry?.quantity ?? 0;
+
+      return (
+        <div className={`bg-amber-900/30 border-2 rounded-lg p-4 flex flex-col gap-3 transition-colors ${
+          qty > 0 ? "border-amber-600" : "border-amber-800"
+        }`}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-col">
+              <h2 className="font-bold text-sm">{product.name}</h2>
+              {product.size && (
+                <span className="text-[10px] text-amber-700 uppercase">{product.size}</span>
+              )}
+            </div>
+            <span className={`text-base font-bold tabular-nums ${qty > 0 ? "text-amber-400" : "text-amber-600"}`}>
+              ${(product.price ?? 0).toFixed(2)}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => decrement(ck)}
+              disabled={qty === 0}
+              className={`w-8 h-8 rounded-lg font-bold text-lg transition-colors ${
+                qty === 0
+                  ? "bg-amber-900/30 text-amber-800 cursor-not-allowed"
+                  : "bg-amber-700 hover:bg-amber-600 text-white cursor-pointer"
+              }`}
+            >−</button>
+            <input
+              type="number"
+              min={0}
+              value={qty === 0 ? "" : qty}
+              placeholder="0"
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10);
+                setQty(product, "single", "none", isNaN(v) ? 0 : v);
+              }}
+              className={`w-12 text-center bg-amber-950/60 border-2 rounded-lg py-1 text-sm font-bold focus:outline-none transition-colors tabular-nums ${
+                qty > 0
+                  ? "border-amber-600 text-amber-300 focus:border-amber-400"
+                  : "border-amber-800 text-amber-700 focus:border-amber-600"
+              }`}
+            />
+            <button
+              onClick={() => increment(product, "single", "none")}
+              className="w-8 h-8 rounded-lg font-bold text-lg bg-amber-700 hover:bg-amber-600 text-white cursor-pointer transition-colors"
+            >+</button>
+            {qty > 0 && (
+              <span className="text-xs text-amber-600 tabular-nums ml-auto">
+                Subtotal: ${((product.price ?? 0) * qty).toFixed(2)}
+              </span>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ── Comida: tamaños + relleno + tiers ─────────────────────────────────────
     return (
       <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4 flex flex-col gap-3">
         <h2 className="font-bold text-sm">{product.name}</h2>
@@ -356,7 +419,6 @@ export default function Cobrar(props: {
             const entry = cart.find((e) => e.key === ck);
             const qty   = entry?.quantity ?? 0;
 
-            // Total qty for this size (all fillings combined) for tier pricing
             const totalQtyForSize = sizeTotals[`${product.id}::${sizeKey}`] ?? qty;
             const unitPrice = getTierPrice(product, sizeKey, totalQtyForSize);
             const tiers = product.tieredPrices[sizeKey] ?? [];
@@ -369,17 +431,9 @@ export default function Cobrar(props: {
               : null;
             const outOfStock = capacity !== null && capacity === 0 && qty === 0;
             const atMax      = capacity !== null && qty >= capacity;
-            const badge      = stockBadge(capacity !== null ? capacity - qty + (outOfStock ? 0 : 0) : null);
 
-            // Compute what the remaining capacity badge should show
-            const remainingForBadge = capacity !== null ? capacity - qty : null;
-            const dispBadge = stockBadge(remainingForBadge !== null ? (outOfStock ? 0 : remainingForBadge + qty) : null);
-
-            // Show per-size stock: how many more can be added
             const addlCapacity = capacity !== null ? Math.max(0, capacity - qty) : null;
-            const sizeStockBadge = stockBadge(addlCapacity !== null ? addlCapacity + qty : null);
 
-            // Next tier threshold
             const sortedTiers = [...tiers].sort((a, b) => a.minQty - b.minQty);
             const nextTier = sortedTiers.find((t) => t.minQty > totalQtyForSize);
 
@@ -395,7 +449,6 @@ export default function Cobrar(props: {
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  {/* Left: size label + price */}
                   <div className="flex flex-col min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-amber-200">{sizeLabel}</span>
@@ -422,7 +475,6 @@ export default function Cobrar(props: {
                         Subtotal: ${(unitPrice * qty).toFixed(2)}
                       </span>
                     )}
-                    {/* Next tier hint */}
                     {nextTier && !outOfStock && (
                       <span className="text-[9px] text-amber-700 mt-0.5">
                         ×{nextTier.minQty - totalQtyForSize} más → ${nextTier.pricePerUnit.toFixed(2)}/u.
@@ -430,7 +482,6 @@ export default function Cobrar(props: {
                     )}
                   </div>
 
-                  {/* Right: stepper */}
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       onClick={() => decrement(ck)}
@@ -479,14 +530,12 @@ export default function Cobrar(props: {
                   </div>
                 </div>
 
-                {/* Tier badges */}
                 <TierBadges
                   tiers={tiers}
                   currentQty={totalQtyForSize}
                   sizeLabel={sizeLabel}
                 />
 
-                {/* Quick-add buttons */}
                 {!outOfStock && tiers.length > 0 && (
                   <div className="flex gap-1.5 flex-wrap pt-0.5">
                     {[3, 5, 10, 20].map((n) => {
@@ -528,13 +577,6 @@ export default function Cobrar(props: {
 
   const showFloatingBar = total > 0 && !isTotalVisible;
 
-  // Group cart entries by product for display
-  const cartByProduct: Record<number, CartEntry[]> = {};
-  for (const entry of cart) {
-    if (!cartByProduct[entry.productId]) cartByProduct[entry.productId] = [];
-    cartByProduct[entry.productId].push(entry);
-  }
-
   return (
     <div className="flex flex-col gap-4 w-full max-w-4xl mx-auto">
 
@@ -567,13 +609,14 @@ export default function Cobrar(props: {
         ) : (
           <div className="flex flex-col gap-1">
             {cart.map((entry) => {
-              const product     = allProducts.find((p) => p.id === entry.productId);
-              const sizeLabel   = product?.sizeLabels[entry.sizeKey] ?? entry.sizeKey;
+              const product      = allProducts.find((p) => p.id === entry.productId);
+              const isBebida     = entry.sizeKey === "single";
+              const sizeLabel    = product?.sizeLabels[entry.sizeKey] ?? entry.sizeKey;
               const fillingLabel = entry.fillingKey !== "none"
                 ? (product?.fillingLabels[entry.fillingKey] ?? entry.fillingKey)
                 : null;
-              const unitPrice   = getEntryPrice(entry);
-              const lineTotal   = unitPrice * entry.quantity;
+              const unitPrice = getEntryPrice(entry);
+              const lineTotal = unitPrice * entry.quantity;
 
               return (
                 <div
@@ -583,9 +626,11 @@ export default function Cobrar(props: {
                   <div className="flex-1 flex flex-col gap-0.5 min-w-0">
                     <span className="text-xs font-semibold truncate">
                       {product?.name ?? "?"}{" "}
-                      <span className="text-amber-700 font-normal">
-                        {[sizeLabel, fillingLabel].filter(Boolean).join(" · ")}
-                      </span>
+                      {!isBebida && (
+                        <span className="text-amber-700 font-normal">
+                          {[sizeLabel, fillingLabel].filter(Boolean).join(" · ")}
+                        </span>
+                      )}
                     </span>
                     <span className="text-[10px] text-amber-700 tabular-nums">
                       ${unitPrice.toFixed(2)} × {entry.quantity}
@@ -626,7 +671,7 @@ export default function Cobrar(props: {
           </div>
         )}
 
-        {/* Discount toggle + Tax panel */}
+        {/* Discount toggle */}
         <div className="flex justify-end gap-2 mt-4 flex-wrap">
           <button
             onClick={() => { setShowDiscount((v) => !v); if (showDiscount) setDiscount(0); }}
@@ -667,7 +712,6 @@ export default function Cobrar(props: {
         {/* IVA / Tax panel */}
         <div className="mt-3 flex flex-col gap-2 bg-blue-900/10 border border-blue-900/40 rounded-lg px-3 py-2.5">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            {/* Enable toggle */}
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <div
                 onClick={() => setTaxEnabled((v) => !v)}
@@ -679,7 +723,6 @@ export default function Cobrar(props: {
                 IVA {taxEnabled ? "incluido" : "no incluido"}
               </span>
             </label>
-            {/* Rate input */}
             <div className="flex items-center gap-2">
               <span className="text-[10px] uppercase tracking-widest text-blue-400/70">Tasa</span>
               <div className="relative flex items-center">
