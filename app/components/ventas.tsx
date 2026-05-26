@@ -18,6 +18,7 @@ type Sale = {
   status?: "pending" | "delivered";
   paymentMethod?: PaymentMethod;
   tax?: number;
+  orderType?: "servir" | "llevar";
 };
 
 const PAYMENT_LABELS: Record<PaymentMethod, { label: string; emoji: string; classes: string }> = {
@@ -372,7 +373,7 @@ export default function Ventas({
                   </div>
                 </div>
 
-                {/* Status + payment row */}
+                {/* Status + payment + order type row */}
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2 flex-wrap">
                     {isDelivered ? (
@@ -387,6 +388,11 @@ export default function Ventas({
                     {payment && (
                       <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest border rounded-full px-3 py-1 ${payment.classes}`}>
                         {payment.emoji} {payment.label}
+                      </span>
+                    )}
+                    {sale.orderType && (
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-400 bg-amber-900/30 border border-amber-700 rounded-full px-3 py-1">
+                        {sale.orderType === "servir" ? "🍽️ Para servir" : "🛍️ Para llevar"}
                       </span>
                     )}
                   </div>

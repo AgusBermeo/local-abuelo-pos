@@ -86,7 +86,7 @@ function getEffectiveCapacity(
 /** Stock badge for display */
 function stockBadge(remaining: number | null): { label: string; cls: string } | null {
   if (remaining === null) return null;
-  if (remaining === 0)   return { label: "Agotado",           cls: "bg-red-900/60 text-red-400 border-red-700" };
+  if (remaining === 0)   return { label: "Agotado",            cls: "bg-red-900/60 text-red-400 border-red-700" };
   if (remaining <= 5)    return { label: `${remaining} disp.`, cls: "bg-orange-900/50 text-orange-400 border-orange-700" };
   return                        { label: `${remaining} disp.`, cls: "bg-green-900/30 text-green-500 border-green-800" };
 }
@@ -139,7 +139,8 @@ export default function Cobrar(props: {
     total: number,
     paymentMethod: PaymentMethod,
     deductions: IngredientDeduction[],
-    tax: number
+    tax: number,
+    orderType: "servir" | "llevar"
   ) => void;
 }) {
   const [cart, setCart] = useState<CartEntry[]>([]);
@@ -150,6 +151,7 @@ export default function Cobrar(props: {
   const [taxRateInput, setTaxRateInput] = useState<string>("15");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PaymentMethod | null>(null);
+  const [orderType, setOrderType] = useState<"servir" | "llevar" | null>(null);
 
   // Selected filling per product (productId → fillingKey)
   const [selectedFilling, setSelectedFilling] = useState<Record<number, string>>({});
@@ -197,7 +199,6 @@ export default function Cobrar(props: {
       setCart((prev) => prev.filter((e) => e.key !== key));
       return;
     }
-    // Check capacity
     const existing = cart.find((e) => e.key === key);
     const currentQ = existing?.quantity ?? 0;
     const capacity = getEffectiveCapacity(
@@ -249,7 +250,6 @@ export default function Cobrar(props: {
   function getEntryPrice(entry: CartEntry): number {
     const product = allProducts.find((p) => p.id === entry.productId);
     if (!product) return 0;
-    // Bebida: flat price
     if (!product.tieredPrices[entry.sizeKey]) return product.price ?? 0;
     const totalQtyForSize = sizeTotals[`${entry.productId}::${entry.sizeKey}`] ?? entry.quantity;
     return getTierPrice(product, entry.sizeKey, totalQtyForSize);
@@ -265,7 +265,7 @@ export default function Cobrar(props: {
   // ── Payment ─────────────────────────────────────────────────────────────────
 
   const confirmPayment = () => {
-    if (!selectedPayment) return;
+    if (!selectedPayment || !orderType) return;
 
     const saleItems: SaleItem[] = cart.map((entry) => {
       const product = allProducts.find((p) => p.id === entry.productId);
@@ -273,11 +273,7 @@ export default function Cobrar(props: {
       const fillingLabel = entry.fillingKey !== "none"
         ? (product?.fillingLabels[entry.fillingKey] ?? entry.fillingKey)
         : null;
-      // For Bebida (single), just use product name (+ size presentation if available)
-      const isBebida = entry.sizeKey === "single";
-      const name = isBebida
-        ? product?.name ?? ""
-        : [product?.name ?? "", sizeLabel, fillingLabel].filter(Boolean).join(" ");
+      const name = [product?.name ?? "", sizeLabel, fillingLabel].filter(Boolean).join(" ");
       return { name, quantity: entry.quantity, price: getEntryPrice(entry) };
     });
 
@@ -291,7 +287,7 @@ export default function Cobrar(props: {
       }
     }
 
-    props.onSaleComplete(saleItems, total, selectedPayment, deductions, taxEnabled ? taxAmount : 0);
+    props.onSaleComplete(saleItems, total, selectedPayment, deductions, taxEnabled ? taxAmount : 0, orderType);
     setCart([]);
     setSelectedFilling({});
     setDiscount(0);
@@ -299,6 +295,7 @@ export default function Cobrar(props: {
     setTaxEnabled(false);
     setShowPaymentModal(false);
     setSelectedPayment(null);
+    setOrderType(null);
   };
 
   const clearCart = () => {
@@ -307,6 +304,7 @@ export default function Cobrar(props: {
     setDiscount(0);
     setShowDiscount(false);
     setTaxEnabled(false);
+    setOrderType(null);
   };
 
   // ── ProductCard ─────────────────────────────────────────────────────────────
@@ -318,70 +316,8 @@ export default function Cobrar(props: {
 
     const currentFilling = hasRelleno ? (selectedFilling[product.id] ?? null) : "none";
 
-    // ── Bebida: precio plano, sin tamaños ─────────────────────────────────────
-    if (sizes.length === 0 && product.price !== undefined) {
-      const ck    = makeCartKey(product.id, "single", "none");
-      const entry = cart.find((e) => e.key === ck);
-      const qty   = entry?.quantity ?? 0;
-
-      return (
-        <div className={`bg-amber-900/30 border-2 rounded-lg p-4 flex flex-col gap-3 transition-colors ${
-          qty > 0 ? "border-amber-600" : "border-amber-800"
-        }`}>
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex flex-col">
-              <h2 className="font-bold text-sm">{product.name}</h2>
-              {product.size && (
-                <span className="text-[10px] text-amber-700 uppercase">{product.size}</span>
-              )}
-            </div>
-            <span className={`text-base font-bold tabular-nums ${qty > 0 ? "text-amber-400" : "text-amber-600"}`}>
-              ${(product.price ?? 0).toFixed(2)}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => decrement(ck)}
-              disabled={qty === 0}
-              className={`w-8 h-8 rounded-lg font-bold text-lg transition-colors ${
-                qty === 0
-                  ? "bg-amber-900/30 text-amber-800 cursor-not-allowed"
-                  : "bg-amber-700 hover:bg-amber-600 text-white cursor-pointer"
-              }`}
-            >−</button>
-            <input
-              type="number"
-              min={0}
-              value={qty === 0 ? "" : qty}
-              placeholder="0"
-              onChange={(e) => {
-                const v = parseInt(e.target.value, 10);
-                setQty(product, "single", "none", isNaN(v) ? 0 : v);
-              }}
-              className={`w-12 text-center bg-amber-950/60 border-2 rounded-lg py-1 text-sm font-bold focus:outline-none transition-colors tabular-nums ${
-                qty > 0
-                  ? "border-amber-600 text-amber-300 focus:border-amber-400"
-                  : "border-amber-800 text-amber-700 focus:border-amber-600"
-              }`}
-            />
-            <button
-              onClick={() => increment(product, "single", "none")}
-              className="w-8 h-8 rounded-lg font-bold text-lg bg-amber-700 hover:bg-amber-600 text-white cursor-pointer transition-colors"
-            >+</button>
-            {qty > 0 && (
-              <span className="text-xs text-amber-600 tabular-nums ml-auto">
-                Subtotal: ${((product.price ?? 0) * qty).toFixed(2)}
-              </span>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    // ── Comida: tamaños + relleno + tiers ─────────────────────────────────────
     return (
-      <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4 flex flex-col gap-3">
+      <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4 flex flex-col col-span-2 gap-3">
         <h2 className="font-bold text-sm">{product.name}</h2>
 
         {/* Relleno selector */}
@@ -412,7 +348,7 @@ export default function Cobrar(props: {
         )}
 
         {/* One row per size */}
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap gap-3">
           {sizes.map(({ key: sizeKey, label: sizeLabel }) => {
             const fk = currentFilling ?? "none";
             const ck = makeCartKey(product.id, sizeKey, fk);
@@ -609,14 +545,13 @@ export default function Cobrar(props: {
         ) : (
           <div className="flex flex-col gap-1">
             {cart.map((entry) => {
-              const product      = allProducts.find((p) => p.id === entry.productId);
-              const isBebida     = entry.sizeKey === "single";
-              const sizeLabel    = product?.sizeLabels[entry.sizeKey] ?? entry.sizeKey;
+              const product     = allProducts.find((p) => p.id === entry.productId);
+              const sizeLabel   = product?.sizeLabels[entry.sizeKey] ?? entry.sizeKey;
               const fillingLabel = entry.fillingKey !== "none"
                 ? (product?.fillingLabels[entry.fillingKey] ?? entry.fillingKey)
                 : null;
-              const unitPrice = getEntryPrice(entry);
-              const lineTotal = unitPrice * entry.quantity;
+              const unitPrice   = getEntryPrice(entry);
+              const lineTotal   = unitPrice * entry.quantity;
 
               return (
                 <div
@@ -626,11 +561,9 @@ export default function Cobrar(props: {
                   <div className="flex-1 flex flex-col gap-0.5 min-w-0">
                     <span className="text-xs font-semibold truncate">
                       {product?.name ?? "?"}{" "}
-                      {!isBebida && (
-                        <span className="text-amber-700 font-normal">
-                          {[sizeLabel, fillingLabel].filter(Boolean).join(" · ")}
-                        </span>
-                      )}
+                      <span className="text-amber-700 font-normal">
+                        {[sizeLabel, fillingLabel].filter(Boolean).join(" · ")}
+                      </span>
                     </span>
                     <span className="text-[10px] text-amber-700 tabular-nums">
                       ${unitPrice.toFixed(2)} × {entry.quantity}
@@ -782,7 +715,7 @@ export default function Cobrar(props: {
               Cancelar
             </button>
             <button
-              onClick={() => { setSelectedPayment(null); setShowPaymentModal(true); }}
+              onClick={() => { setSelectedPayment(null); setOrderType(null); setShowPaymentModal(true); }}
               className="flex-2 py-3 px-6 rounded-lg font-bold uppercase tracking-widest text-sm bg-amber-500 hover:bg-amber-400 text-amber-950 cursor-pointer transition-colors"
             >
               Cobrar ${total.toFixed(2)}
@@ -799,44 +732,76 @@ export default function Cobrar(props: {
             <div className="flex items-center gap-3">
               <span className="text-2xl">💳</span>
               <div>
-                <h2 className="text-amber-400 font-bold text-base uppercase tracking-widest leading-tight">Forma de pago</h2>
+                <h2 className="text-amber-400 font-bold text-base uppercase tracking-widest leading-tight">Finalizar pedido</h2>
                 <p className="text-[10px] uppercase tracking-widest text-yellow-700">
                   Total: <span className="text-amber-400 font-bold">${total.toFixed(2)}</span>
                 </p>
               </div>
             </div>
+
+            {/* Servir o llevar */}
             <div className="flex flex-col gap-2">
-              {PAYMENT_OPTIONS.map((opt) => (
-                <button key={opt.value} onClick={() => setSelectedPayment(opt.value)}
-                  className={`flex items-center gap-4 px-4 py-3.5 rounded-xl border-2 text-left cursor-pointer transition-all ${
-                    selectedPayment === opt.value
-                      ? "border-amber-500 bg-amber-900/60"
-                      : "border-amber-800 hover:border-amber-600 bg-amber-900/20"
-                  }`}
-                >
-                  <span className="text-2xl leading-none">{opt.emoji}</span>
-                  <div className="flex flex-col">
-                    <span className={`font-bold text-sm ${selectedPayment === opt.value ? "text-amber-400" : "text-amber-200"}`}>
-                      {opt.label}
-                    </span>
-                    <span className="text-[10px] text-amber-700">{opt.desc}</span>
-                  </div>
-                  <div className={`ml-auto w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                    selectedPayment === opt.value ? "border-amber-500 bg-amber-500" : "border-amber-700"
-                  }`}>
-                    {selectedPayment === opt.value && <div className="w-1.5 h-1.5 rounded-full bg-amber-950" />}
-                  </div>
-                </button>
-              ))}
+              <p className="text-[10px] uppercase tracking-widest text-yellow-700">¿Cómo se sirve?</p>
+              <div className="flex gap-2">
+                {([
+                  { value: "servir", label: "Para servir", emoji: "🍽️" },
+                  { value: "llevar", label: "Para llevar", emoji: "🛍️" },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setOrderType(opt.value)}
+                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-bold text-sm cursor-pointer transition-all ${
+                      orderType === opt.value
+                        ? "border-amber-500 bg-amber-900/60 text-amber-400"
+                        : "border-amber-800 hover:border-amber-600 bg-amber-900/20 text-amber-700"
+                    }`}
+                  >
+                    <span>{opt.emoji}</span>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* Forma de pago */}
+            <div className="flex flex-col gap-2">
+              <p className="text-[10px] uppercase tracking-widest text-yellow-700">Forma de pago</p>
+              <div className="flex flex-col gap-2">
+                {PAYMENT_OPTIONS.map((opt) => (
+                  <button key={opt.value} onClick={() => setSelectedPayment(opt.value)}
+                    className={`flex items-center gap-4 px-4 py-3.5 rounded-xl border-2 text-left cursor-pointer transition-all ${
+                      selectedPayment === opt.value
+                        ? "border-amber-500 bg-amber-900/60"
+                        : "border-amber-800 hover:border-amber-600 bg-amber-900/20"
+                    }`}
+                  >
+                    <span className="text-2xl leading-none">{opt.emoji}</span>
+                    <div className="flex flex-col">
+                      <span className={`font-bold text-sm ${selectedPayment === opt.value ? "text-amber-400" : "text-amber-200"}`}>
+                        {opt.label}
+                      </span>
+                      <span className="text-[10px] text-amber-700">{opt.desc}</span>
+                    </div>
+                    <div className={`ml-auto w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                      selectedPayment === opt.value ? "border-amber-500 bg-amber-500" : "border-amber-700"
+                    }`}>
+                      {selectedPayment === opt.value && <div className="w-1.5 h-1.5 rounded-full bg-amber-950" />}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="flex gap-3 pt-1">
               <button onClick={() => setShowPaymentModal(false)}
                 className="flex-1 py-2.5 border-2 border-amber-800 text-amber-700 hover:border-amber-600 hover:text-amber-500 rounded-lg text-sm font-bold cursor-pointer transition-colors">
                 Cancelar
               </button>
-              <button disabled={!selectedPayment} onClick={confirmPayment}
+              <button
+                disabled={!selectedPayment || !orderType}
+                onClick={confirmPayment}
                 className={`flex-1 py-2.5 rounded-lg text-sm font-bold uppercase tracking-widest transition-colors ${
-                  selectedPayment
+                  selectedPayment && orderType
                     ? "bg-amber-500 hover:bg-amber-400 text-amber-950 cursor-pointer"
                     : "bg-amber-900/40 text-amber-800 cursor-not-allowed"
                 }`}>

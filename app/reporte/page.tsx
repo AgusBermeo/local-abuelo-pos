@@ -10,6 +10,7 @@ type PaymentMethod = "efectivo" | "transferencia" | "deuna";
 type Sale = {
   id: number; date: Date; items: OrderItem[];
   total: number; status: "pending" | "delivered"; paymentMethod: PaymentMethod;
+  orderType?: "servir" | "llevar";
 };
 type Ingredient = { id: string; name: string; stock: number };
 type Product = {
@@ -75,17 +76,11 @@ function delta(curr: number, prev: number): { pct: number; up: boolean; neutral:
   return { pct: Math.abs(pct), up: pct >= 0, neutral: false };
 }
 
-// Last N days ending `endOffset` days ago (0 = today, 1 = yesterday, …)
 function lastNDays(n: number, endOffset = 0): string[] {
   return Array.from({ length: n }, (_, i) => {
     const d = new Date(); d.setDate(d.getDate() - endOffset - (n - 1 - i));
     return toLocalDateStr(d);
   });
-}
-
-function isFood(name: string) {
-  const n = name.toLowerCase();
-  return n.includes("empanada") || n.includes("bandeja");
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -120,7 +115,7 @@ function StatCard({
   );
 }
 
-// ── Bar chart (pure CSS, no lib) ──────────────────────────────────────────────
+// ── Bar chart ─────────────────────────────────────────────────────────────────
 function DailyBarChart({ sales, days, endOffset = 0 }: { sales: Sale[]; days: number; endOffset?: number }) {
   const dates = lastNDays(days, endOffset);
   const byDate: Record<string, { revenue: number; count: number }> = {};
@@ -131,11 +126,7 @@ function DailyBarChart({ sales, days, endOffset = 0 }: { sales: Sale[]; days: nu
   });
 
   const maxRev = Math.max(...Object.values(byDate).map((v) => v.revenue), 1);
-
-  // Show only abbreviated day labels
   const dayNames = ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sá"];
-
-  // The "active" date is the last date in the range (today or yesterday)
   const activeDate = toLocalDateStr((() => { const d = new Date(); d.setDate(d.getDate() - endOffset); return d; })());
 
   return (
@@ -148,7 +139,6 @@ function DailyBarChart({ sales, days, endOffset = 0 }: { sales: Sale[]; days: nu
           const isActive = date === activeDate;
           return (
             <div key={date} className="flex-1 flex flex-col items-center gap-1 group relative">
-              {/* Tooltip */}
               <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-amber-900 border border-amber-600 rounded-lg px-2 py-1 text-[10px] text-amber-200 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
                 <span className="font-bold">${revenue.toFixed(2)}</span>
                 <span className="text-amber-600 ml-1">({count})</span>
@@ -236,7 +226,14 @@ function HistorialSection({ sales }: { sales: Sale[] }) {
                     {" · "}
                     {new Date(sale.date).toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit" })}
                   </span>
-                  <span className="text-[10px] text-amber-700 uppercase">{pay.label}</span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] text-amber-700 uppercase">{pay.label}</span>
+                    {sale.orderType && (
+                      <span className="text-[10px] text-amber-600 uppercase">
+                        · {sale.orderType === "servir" ? "🍽️ Servir" : "🛍️ Llevar"}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -278,8 +275,7 @@ function PieChart({ slices, size = 120 }: { slices: PieSlice[]; size?: number })
   const cy = size / 2;
   const r  = size / 2 - 6;
 
-  // Build SVG arc paths
-  let cumAngle = -Math.PI / 2; // start at top
+  let cumAngle = -Math.PI / 2;
   const paths = slices.map((slice) => {
     const angle = (slice.value / total) * 2 * Math.PI;
     const x1 = cx + r * Math.cos(cumAngle);
@@ -288,11 +284,8 @@ function PieChart({ slices, size = 120 }: { slices: PieSlice[]; size?: number })
     const x2 = cx + r * Math.cos(cumAngle);
     const y2 = cy + r * Math.sin(cumAngle);
     const large = angle > Math.PI ? 1 : 0;
-    // If only one slice, draw full circle as two arcs
     if (slices.length === 1) {
-      return (
-        <circle key={slice.label} cx={cx} cy={cy} r={r} fill={slice.color} />
-      );
+      return <circle key={slice.label} cx={cx} cy={cy} r={r} fill={slice.color} />;
     }
     return (
       <path
@@ -308,27 +301,19 @@ function PieChart({ slices, size = 120 }: { slices: PieSlice[]; size?: number })
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       {paths}
-      {/* center hole */}
       <circle cx={cx} cy={cy} r={r * 0.42} fill="#1c0a00" />
     </svg>
   );
 }
 
 // ── Palettes ──────────────────────────────────────────────────────────────────
-// Relleno: warm reds/ambers for Carne & Pollo
 const PIE_COLORS_RELLENO = ["#ef4444", "#f59e0b", "#f97316", "#fbbf24", "#dc2626"];
-// Tamaño: cool blues for Masa Grande / Normal / Bocadito
 const PIE_COLORS_TAMANO  = ["#3b82f6", "#06b6d4", "#8b5cf6", "#0ea5e9", "#6366f1"];
 
-// ── Explicit name-based classification ───────────────────────────────────────
-// Relleno: ingredients whose name contains "carne" or "pollo" (case-insensitive)
-// Tamaño:  ingredients whose name contains "masa" (case-insensitive)
-// Anything else is shown in whichever group it falls into by ingredient name.
 function classifyIngredient(name: string): "relleno" | "tamano" | "other" {
   const n = name.toLowerCase();
   if (n.includes("carne") || n.includes("pollo")) return "relleno";
   if (n.includes("masa"))                          return "tamano";
-  // Fallback: if name hints at size words
   if (n.includes("grande") || n.includes("normal") || n.includes("bocadito")) return "tamano";
   return "other";
 }
@@ -338,7 +323,6 @@ function IngredientesSection({
 }: {
   sales: Sale[]; products: Product[]; ingredients: Ingredient[];
 }) {
-  // ── Accumulate total consumption per ingredient across all food sales ─────────
   const ingConsumed: Record<string, number> = {};
 
   for (const sale of sales) {
@@ -365,7 +349,6 @@ function IngredientesSection({
           break;
         }
       }
-      // Fallback: first variant
       if (!matched) {
         const entries = Object.entries(product.ingredientMap);
         if (entries.length > 0) {
@@ -378,9 +361,7 @@ function IngredientesSection({
     }
   }
 
-  // ── Split ingredients into the two fixed categories ────────────────────────
   type IngRow = { ing: Ingredient; consumed: number };
-
   const rellenoRows: IngRow[] = [];
   const tamanoRows:  IngRow[] = [];
 
@@ -389,7 +370,7 @@ function IngredientesSection({
     if (consumed === 0) continue;
     const cat = classifyIngredient(ing.name);
     if (cat === "relleno") rellenoRows.push({ ing, consumed });
-    else                   tamanoRows.push({ ing, consumed }); // "tamano" + "other" go here
+    else                   tamanoRows.push({ ing, consumed });
   }
 
   rellenoRows.sort((a, b) => b.consumed - a.consumed);
@@ -415,7 +396,6 @@ function IngredientesSection({
     color: PIE_COLORS_TAMANO[i % PIE_COLORS_TAMANO.length],
   }));
 
-  // ── Reusable panel: pie + legend + bar list ───────────────────────────────────
   function PiePanel({
     title, subtitle, rows, slices, accentText, borderColor, emptyMsg,
   }: {
@@ -427,7 +407,6 @@ function IngredientesSection({
 
     return (
       <div className={`flex-1 flex flex-col gap-4 bg-amber-900/20 border-2 ${borderColor} rounded-xl p-4 min-w-0`}>
-        {/* Header */}
         <div className="flex flex-col gap-0.5">
           <p className={`text-[10px] uppercase tracking-widest font-bold ${accentText}`}>{title}</p>
           <p className="text-[10px] text-amber-800">{subtitle}</p>
@@ -437,12 +416,9 @@ function IngredientesSection({
           <p className="text-amber-800 text-xs italic">{emptyMsg}</p>
         ) : (
           <>
-            {/* Pie chart centered */}
             <div className="flex justify-center">
               <PieChart slices={slices} size={120} />
             </div>
-
-            {/* Legend */}
             <div className="flex flex-col gap-1.5">
               {rows.map((r, i) => {
                 const pct = totalConsumed > 0 ? ((r.consumed / totalConsumed) * 100).toFixed(0) : "0";
@@ -455,8 +431,6 @@ function IngredientesSection({
                 );
               })}
             </div>
-
-            {/* Bar list with stock + consumed */}
             <div className="flex flex-col gap-2 pt-2 border-t border-amber-800/40">
               {rows.map(({ ing, consumed }, i) => (
                 <div key={ing.id} className="flex flex-col gap-0.5">
@@ -513,9 +487,8 @@ function IngredientesSection({
   );
 }
 
-// ── Variantes vendidas (Tamaño × Relleno) ────────────────────────────────────
+// ── Variantes vendidas ────────────────────────────────────────────────────────
 function VariantesSection({ sales, products }: { sales: Sale[]; products: Product[] }) {
-  // Accumulate quantities per size+filling combination only (no product grouping)
   const variantCount: Record<string, number> = {};
 
   for (const sale of sales) {
@@ -526,7 +499,6 @@ function VariantesSection({ sales, products }: { sales: Sale[]; products: Produc
       if (!product) continue;
 
       const suffix = item.name.slice(product.name.length).trim().toLowerCase();
-
       let matchedLabel: string | null = null;
 
       for (const vk of Object.keys(product.ingredientMap)) {
@@ -584,7 +556,6 @@ function VariantesSection({ sales, products }: { sales: Sale[]; products: Produc
       <p className="text-[10px] text-amber-700">
         Unidades totales vendidas por combinación de tamaño y relleno, todos los productos.
       </p>
-
       <div className="flex flex-col gap-3">
         {rows.map(({ label, qty }, idx) => {
           const barColor  = BAR_COLORS[idx % BAR_COLORS.length];
@@ -612,7 +583,6 @@ function VariantesSection({ sales, products }: { sales: Sale[]; products: Produc
           );
         })}
       </div>
-
       <p className="text-[10px] text-amber-800 text-right pt-1 border-t border-amber-800/40">
         Total: {total} unidades
       </p>
@@ -637,7 +607,6 @@ function TopProductsSection({ productTotals }: { productTotals: Record<string, {
 
   return (
     <SectionCard title="🏆 Productos más vendidos">
-      {/* Sort toggle */}
       <div className="flex bg-amber-900/40 border border-amber-800 rounded-lg p-0.5 gap-0.5 self-start">
         {([["revenue", "💰 Recaudado"], ["quantity", "🔢 Cantidad"]] as [SortMode, string][]).map(([key, label]) => (
           <button
@@ -687,6 +656,49 @@ function TopProductsSection({ productTotals }: { productTotals: Record<string, {
   );
 }
 
+// ── Order Type Section ────────────────────────────────────────────────────────
+function OrderTypeSection({ sales }: { sales: Sale[] }) {
+  const servir = sales.filter((s) => s.orderType === "servir" || !s.orderType).length;
+  const llevar = sales.filter((s) => s.orderType === "llevar").length;
+  const total  = sales.length;
+
+  if (total === 0) return null;
+
+  const pctServir = total > 0 ? (servir / total) * 100 : 0;
+  const pctLlevar = total > 0 ? (llevar / total) * 100 : 0;
+
+  const revenueServir = sales
+    .filter((s) => s.orderType === "servir" || !s.orderType)
+    .reduce((acc, s) => acc + s.total, 0);
+  const revenueLlevar = sales
+    .filter((s) => s.orderType === "llevar")
+    .reduce((acc, s) => acc + s.total, 0);
+
+  return (
+    <SectionCard title="🍽️ Servir vs 🛍️ Llevar">
+      <div className="flex flex-col gap-4">
+        {[
+          { label: "Para servir", emoji: "🍽️", count: servir, pct: pctServir, revenue: revenueServir, bar: "bg-amber-500" },
+          { label: "Para llevar", emoji: "🛍️", count: llevar, pct: pctLlevar, revenue: revenueLlevar, bar: "bg-teal-500" },
+        ].map(({ label, emoji, count, pct, revenue, bar }) => (
+          <div key={label} className="flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-amber-200 font-semibold">{emoji} {label}</span>
+              <span className="text-amber-500 font-bold tabular-nums">
+                ${revenue.toFixed(2)}{" "}
+                <span className="text-amber-700">· {count} pedido{count !== 1 ? "s" : ""} · {pct.toFixed(0)}%</span>
+              </span>
+            </div>
+            <div className="h-2 bg-amber-900 rounded-full overflow-hidden">
+              <div className={`h-full ${bar} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </SectionCard>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function ReportePage() {
   const [sales]       = useLocalStorage<Sale[]>      ("abuelo-sales",       []);
@@ -704,13 +716,11 @@ export default function ReportePage() {
   const avgTicket   = periodSales.length > 0 ? total / periodSales.length : 0;
   const prevAvg     = prevSales.length > 0 ? prevTotal / prevSales.length : 0;
 
-  // Payment breakdown
   const byPayment = (["efectivo", "transferencia", "deuna"] as PaymentMethod[]).map((m) => {
     const f = periodSales.filter((s) => s.paymentMethod === m);
     return { method: m, count: f.length, total: f.reduce((s, x) => s + x.total, 0) };
   });
 
-  // Top products
   const productTotals: Record<string, { quantity: number; revenue: number }> = {};
   for (const sale of periodSales)
     for (const item of sale.items) {
@@ -718,21 +728,16 @@ export default function ReportePage() {
       productTotals[item.name].quantity += item.quantity;
       productTotals[item.name].revenue  += item.price * item.quantity;
     }
-  const topProducts = Object.entries(productTotals)
-    .map(([name, v]) => ({ name, ...v }))
-    .sort((a, b) => b.revenue - a.revenue)
-    .slice(0, 5);
 
-  // Chart days + end offset based on period
   const chartDays      = period === "today" || period === "yesterday" ? 1 : period === "week" ? 7 : period === "month" ? 30 : 14;
   const chartEndOffset = period === "yesterday" ? 1 : 0;
 
   const PERIODS: { key: Period; label: string }[] = [
-    { key: "today",     label: "Hoy"   },
-    { key: "yesterday", label: "Ayer"  },
+    { key: "today",     label: "Hoy"    },
+    { key: "yesterday", label: "Ayer"   },
     { key: "week",      label: "7 días" },
-    { key: "month",     label: "Mes"   },
-    { key: "all",       label: "Total" },
+    { key: "month",     label: "Mes"    },
+    { key: "all",       label: "Total"  },
   ];
 
   const prevLabel: Record<Period, string> = {
@@ -747,7 +752,6 @@ export default function ReportePage() {
     <div className="flex flex-col min-h-dvh bg-amber-950/60 font-sans">
       <Header />
 
-      {/* Back nav */}
       <div className="px-5 pt-4">
         <button onClick={() => window.history.back()}
           className="flex items-center gap-2 text-amber-700 hover:text-amber-400 text-xs uppercase tracking-widest font-bold transition-colors cursor-pointer">
@@ -757,7 +761,6 @@ export default function ReportePage() {
 
       <div className="flex flex-col gap-6 w-full max-w-4xl mx-auto px-5 py-6 pb-12">
 
-        {/* Title */}
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl font-bold text-amber-400 uppercase tracking-widest">📊 Reporte</h2>
           <p className="text-xs text-yellow-700">Resumen de ventas y rendimiento del negocio</p>
@@ -781,7 +784,7 @@ export default function ReportePage() {
           <StatCard label="Pendientes"   value={String(pending)}            accent="purple" sub={`${delivered} entregados`} />
         </div>
 
-        {/* ── Gráfico de ventas por día ── */}
+        {/* Gráfico de ventas por día */}
         <SectionCard title="📈 Ventas por día">
           {periodSales.length === 0
             ? <p className="text-amber-700 text-sm">Sin datos para este período.</p>
@@ -789,33 +792,21 @@ export default function ReportePage() {
           }
         </SectionCard>
 
-        {/* ── Comparativa semana anterior ── */}
+        {/* Comparativa */}
         {period !== "all" && (
           <SectionCard title={`🔄 Comparativa vs ${prevLabel[period]}`}>
             <div className="flex flex-col gap-4">
-              <ComparativaRow
-                label="Ventas (nº pedidos)"
-                curr={periodSales.length}
-                prev={prevSales.length}
-                format={(v) => String(v)}
-              />
-              <ComparativaRow
-                label="Recaudado"
-                curr={total}
-                prev={prevTotal}
-                format={(v) => `$${v.toFixed(2)}`}
-              />
-              <ComparativaRow
-                label="Ticket promedio"
-                curr={avgTicket}
-                prev={prevAvg}
-                format={(v) => `$${v.toFixed(2)}`}
-              />
+              <ComparativaRow label="Ventas (nº pedidos)" curr={periodSales.length} prev={prevSales.length} format={(v) => String(v)} />
+              <ComparativaRow label="Recaudado"           curr={total}              prev={prevTotal}         format={(v) => `$${v.toFixed(2)}`} />
+              <ComparativaRow label="Ticket promedio"     curr={avgTicket}          prev={prevAvg}           format={(v) => `$${v.toFixed(2)}`} />
             </div>
           </SectionCard>
         )}
 
-        {/* ── Métodos de pago ── */}
+        {/* Servir vs Llevar */}
+        {periodSales.length > 0 && <OrderTypeSection sales={periodSales} />}
+
+        {/* Métodos de pago */}
         <SectionCard title="💳 Métodos de pago">
           <div className="flex flex-col gap-3">
             {byPayment.map(({ method, count, total: t }) => {
@@ -838,29 +829,28 @@ export default function ReportePage() {
           </div>
         </SectionCard>
 
-        {/* ── Productos más vendidos ── */}
+        {/* Productos más vendidos */}
         <TopProductsSection productTotals={productTotals} />
 
-        {/* ── Consumo de ingredientes (Comida) ── */}
+        {/* Consumo de ingredientes */}
         {ingredients.length > 0 && (
           <SectionCard title="🧂 Consumo de ingredientes (Comida)">
             <IngredientesSection sales={periodSales} products={products} ingredients={ingredients} />
           </SectionCard>
         )}
 
-        {/* ── Variantes vendidas (Tamaño × Relleno) ── */}
+        {/* Variantes vendidas */}
         {products.some((p) => Object.keys(p.ingredientMap ?? {}).length > 0) && (
           <SectionCard title="🥟 Combinaciones vendidas (Tamaño · Relleno)">
             <VariantesSection sales={periodSales} products={products} />
           </SectionCard>
         )}
 
-        {/* ── Historial detallado ── */}
+        {/* Historial detallado */}
         <SectionCard title="📋 Historial detallado">
           <HistorialSection sales={periodSales} />
         </SectionCard>
 
-        {/* Empty state */}
         {periodSales.length === 0 && (
           <div className="bg-amber-900/20 border-2 border-amber-900 rounded-xl p-8 text-center flex flex-col gap-2">
             <span className="text-4xl">📭</span>

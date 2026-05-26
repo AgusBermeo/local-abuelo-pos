@@ -10,39 +10,27 @@ import { useState } from "react";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 
 // ── Price tier ────────────────────────────────────────────────────────────────
-// When cart quantity for this size reaches `minQty`, price per unit becomes `pricePerUnit`.
-// Tiers should be sorted ascending by minQty. The tier with minQty=1 is the base price.
 export type PriceTier = { minQty: number; pricePerUnit: number };
-
-// sizeKey → list of tiers (sorted ascending by minQty)
 export type TieredPrices = Record<string, PriceTier[]>;
 
 // ── Ingredient ────────────────────────────────────────────────────────────────
 export type Ingredient = { id: string; name: string; stock: number };
 
 // ── Product ───────────────────────────────────────────────────────────────────
-// ingredientMap: variantKey → { ingredientId → quantity consumed per unit sold }
-// variantKey format: `${sizeKey}-${fillingKey}` e.g. "grande-carne", "bocadito-none"
 export type Product = {
   id: number;
   name: string;
   category: "Comida" | "Bebida";
-  // tieredPrices: sizeKey → tiers. Used when product has food sizes.
   tieredPrices: TieredPrices;
-  // Simple flat price for beverages or single-price items (no sizes)
   price?: number;
-  // Size labels: sizeKey → display string
   sizeLabels: Record<string, string>;
-  // Filling labels: fillingKey → display string (empty = no relleno)
   fillingLabels: Record<string, string>;
-  // Presentation string for simple (no-size) products
   size?: string;
   ingredientMap: Record<string, Record<string, number>>;
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Get the price per unit for a given size+quantity, based on tiers */
 export function getTierPrice(product: Product, sizeKey: string, qty: number): number {
   const tiers = product.tieredPrices[sizeKey];
   if (!tiers || tiers.length === 0) return product.price ?? 0;
@@ -51,7 +39,6 @@ export function getTierPrice(product: Product, sizeKey: string, qty: number): nu
   return match ? match.pricePerUnit : sorted[sorted.length - 1].pricePerUnit;
 }
 
-/** All size keys that have at least one tier with price > 0 */
 export function getAvailableSizeKeys(product: Product): Array<{ key: string; label: string }> {
   return Object.entries(product.sizeLabels)
     .filter(([key]) => {
@@ -79,7 +66,7 @@ export function getVariantKeys(product: Product): Array<{ variantKey: string; la
 
 export type IngredientDeduction = { ingredientId: string; quantity: number };
 
-// ── Default product: single Empanada ─────────────────────────────────────────
+// ── Default products ──────────────────────────────────────────────────────────
 const INITIAL_PRODUCTS: Product[] = [
   {
     id: 1,
@@ -119,7 +106,8 @@ export type PaymentMethod = "efectivo" | "transferencia" | "deuna";
 export type Sale = {
   id: number; date: Date; items: OrderItem[];
   total: number; status: "pending" | "delivered"; paymentMethod: PaymentMethod;
-  tax?: number
+  tax?: number;
+  orderType?: "servir" | "llevar";
 };
 
 export default function Home() {
@@ -141,10 +129,11 @@ export default function Home() {
     total: number,
     paymentMethod: PaymentMethod,
     deductions: IngredientDeduction[],
-    tax: number = 0
+    tax: number = 0,
+    orderType: "servir" | "llevar" = "servir"
   ) => {
     setSales((prev) => [
-      { id: Date.now(), date: new Date(), items, total, status: "pending", paymentMethod, tax },
+      { id: Date.now(), date: new Date(), items, total, status: "pending", paymentMethod, tax, orderType },
       ...prev,
     ]);
     if (deductions.length > 0) {
