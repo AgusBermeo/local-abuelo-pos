@@ -6,7 +6,7 @@ import Cobrar from "./components/cobrar";
 import Ventas from "./components/ventas";
 import Inventario from "./components/inventario";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 
 // ── Price tier ────────────────────────────────────────────────────────────────
@@ -103,11 +103,13 @@ const INITIAL_PRODUCTS: Product[] = [
 
 export type OrderItem = { name: string; quantity: number; price: number };
 export type PaymentMethod = "efectivo" | "transferencia" | "deuna";
+
 export type Sale = {
   id: number; date: Date; items: OrderItem[];
   total: number; status: "pending" | "delivered"; paymentMethod: PaymentMethod;
   tax?: number;
   orderType?: "servir" | "llevar";
+  deductions?: IngredientDeduction[]; // only set for pending "llevar" orders
 };
 
 export default function Home() {
@@ -115,6 +117,9 @@ export default function Home() {
   const [ingredients, setIngredients] = useLocalStorage<Ingredient[]>("abuelo-ingredients", []);
   const [sales,       setSales]       = useLocalStorage<Sale[]>      ("abuelo-sales",       []);
   const [activeTab,   setActiveTab]   = useState(0);
+
+  // Ref to track which sale IDs have already been delivered, preventing double deduction
+  const deliveredRef = useRef<Set<number>>(new Set());
 
   const normalizedProducts = products.map((product) => ({
     ...product,
@@ -124,6 +129,7 @@ export default function Home() {
     ingredientMap: product.ingredientMap ?? {},
   }));
 
+  // ── addSale: deduct immediately for "servir", defer for "llevar" ──────────
   const addSale = (
     items: OrderItem[],
     total: number,
@@ -132,11 +138,25 @@ export default function Home() {
     tax: number = 0,
     orderType: "servir" | "llevar" = "servir"
   ) => {
+    const isServir = orderType === "servir";
+
     setSales((prev) => [
-      { id: Date.now(), date: new Date(), items, total, status: "pending", paymentMethod, tax, orderType },
+      {
+        id: Date.now(),
+        date: new Date(),
+        items,
+        total,
+        status: "pending",
+        paymentMethod,
+        tax,
+        orderType,
+        deductions: isServir ? undefined : deductions,
+      },
       ...prev,
     ]);
-    if (deductions.length > 0) {
+
+    // "servir": deduct stock right away
+    if (isServir && deductions.length > 0) {
       const agg: Record<string, number> = {};
       deductions.forEach(({ ingredientId, quantity }) => {
         agg[ingredientId] = (agg[ingredientId] ?? 0) + quantity;
@@ -172,9 +192,50 @@ export default function Home() {
   const editProduct   = (p: Product) => setProducts((prev) => prev.map((x) => x.id === p.id ? p : x));
   const deleteProduct = (id: number) => setProducts((prev) => prev.filter((p) => p.id !== id));
 
-  const deleteSale      = (id: number) => setSales((prev) => prev.filter((s) => s.id !== id));
-  const markDelivered   = (id: number) => setSales((prev) => prev.map((s) => s.id === id ? { ...s, status: "delivered" } : s));
-  const unmarkDelivered = (id: number) => setSales((prev) => prev.map((s) => s.id === id ? { ...s, status: "pending" } : s));
+  const deleteSale = (id: number) => setSales((prev) => prev.filter((s) => s.id !== id));
+
+  // ── markDelivered: apply deferred deductions exactly once for "llevar" ────
+  const markDelivered = (id: number) => {
+    // Guard: if already processed, skip ingredient deduction entirely
+    if (deliveredRef.current.has(id)) {
+      setSales((prev) =>
+        prev.map((s) => s.id === id ? { ...s, status: "delivered", deductions: undefined } : s)
+      );
+      return;
+    }
+    deliveredRef.current.add(id);
+
+    // Find the sale outside any setter callback to read it exactly once
+    const sale = sales.find((s) => s.id === id);
+
+    // Apply deductions if this is a "llevar" order with pending deductions
+    if (sale?.orderType === "llevar" && sale.deductions && sale.deductions.length > 0) {
+      const agg: Record<string, number> = {};
+      sale.deductions.forEach(({ ingredientId, quantity }) => {
+        agg[ingredientId] = (agg[ingredientId] ?? 0) + quantity;
+      });
+      setIngredients((prev) =>
+        prev.map((ing) =>
+          agg[ing.id] !== undefined
+            ? { ...ing, stock: Math.max(0, ing.stock - agg[ing.id]) }
+            : ing
+        )
+      );
+    }
+
+    // Mark as delivered and clear deductions
+    setSales((prev) =>
+      prev.map((s) =>
+        s.id === id ? { ...s, status: "delivered", deductions: undefined } : s
+      )
+    );
+  };
+
+  const unmarkDelivered = (id: number) => {
+    deliveredRef.current.delete(id);
+    setSales((prev) => prev.map((s) => s.id === id ? { ...s, status: "pending" } : s));
+  };
+
   const editSale = (id: number, date: Date, paymentMethod: PaymentMethod) =>
     setSales((prev) => prev.map((s) => s.id === id ? { ...s, date, paymentMethod } : s));
 

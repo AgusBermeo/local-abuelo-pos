@@ -676,7 +676,7 @@ export default function Ventas({
       {/* Floating button to Reporte */}
       <button
         onClick={() => window.location.href = "/reporte"}
-        className="fixed bottom-6 right-6 bg-amber-500 hover:bg-amber-400 text-amber-950 py-3 px-4 rounded-md shadow-lg flex items-center gap-2 text-sm font-bold transition-colors"
+        className="fixed cursor-pointer bottom-6 right-6 bg-amber-500 hover:bg-amber-400 text-amber-950 py-3 px-4 rounded-md shadow-lg flex items-center gap-2 text-sm font-bold transition-colors"
       >
         📊 Reporte
       </button>

@@ -295,20 +295,14 @@ function IngredientAssigner({
 
 // ── Product form ──────────────────────────────────────────────────────────────
 
-// We store tiers per size key as editable rows
 type ProductForm = {
   name: string;
   category: "Comida" | "Bebida";
-  // Comida: size keys are fixed (grande/normal/bocadito) with tiered prices
-  // Bebida: single price + presentation
   price: string;
   size: string;
-  // sizeKey → tier rows
   tierRows: Record<string, TierRow[]>;
-  // whether each size is enabled
   sizeEnabled: Record<string, boolean>;
   hasRelleno: boolean;
-  // variantKey → { ingId → qty string }
   ingredientMap: Record<string, Record<string, string>>;
 };
 
@@ -348,7 +342,6 @@ function productToForm(product: Product): ProductForm {
       tierRows[sk] = tiers.length > 0
         ? tiers.map((t) => defaultTierRow(t.minQty, String(t.pricePerUnit)))
         : [defaultTierRow(1)];
-      // Always ensure first row has minQty=1
       if (tierRows[sk][0]) tierRows[sk][0].minQty = "1";
     });
 
@@ -432,7 +425,6 @@ function ProductFormFields({
         </div>
       </Field>
 
-      {/* Comida: size + tier editor */}
       {form.category === "Comida" && (
         <>
           <div className="flex flex-col gap-3">
@@ -483,7 +475,6 @@ function ProductFormFields({
         </>
       )}
 
-      {/* Bebida: flat price */}
       {form.category === "Bebida" && (
         <div className="grid grid-cols-2 gap-3">
           <Field label="Precio ($)" error={errors.price}>
@@ -508,7 +499,6 @@ function ProductFormFields({
         </div>
       )}
 
-      {/* Ingredient assigner */}
       <div className="flex flex-col gap-3 bg-amber-900/30 border border-amber-800 rounded-lg p-3">
         <p className="text-[10px] uppercase tracking-widest text-yellow-700">Control de stock</p>
         <IngredientAssigner
@@ -618,7 +608,6 @@ export default function Inventario({
           .filter((r) => r.pricePerUnit !== "" && Number(r.pricePerUnit) > 0)
           .map((r) => ({ minQty: Math.max(1, Number(r.minQty) || 1), pricePerUnit: Number(r.pricePerUnit) }))
           .sort((a, b) => a.minQty - b.minQty);
-        // Ensure base tier at minQty=1
         if (tieredPrices[sk].length > 0 && tieredPrices[sk][0].minQty !== 1) {
           tieredPrices[sk].unshift({ ...tieredPrices[sk][0], minQty: 1 });
         }
@@ -713,15 +702,7 @@ export default function Inventario({
                         ? <span className="text-[10px] text-amber-700">Usado en {usedIn} producto{usedIn !== 1 ? "s" : ""}</span>
                         : <span className="text-[10px] text-amber-800 italic">Sin asignar</span>}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-lg font-bold tabular-nums ${stockColor(ing.stock)}`}>{ing.stock}</span>
-                      <div className="flex flex-col gap-1">
-                        <button onClick={() => onEditIngredient({ ...ing, stock: ing.stock + 1 })}
-                          className="w-6 h-5 flex items-center justify-center rounded bg-amber-800 hover:bg-amber-700 text-white text-xs font-bold cursor-pointer leading-none">+</button>
-                        <button onClick={() => onEditIngredient({ ...ing, stock: Math.max(0, ing.stock - 1) })}
-                          className="w-6 h-5 flex items-center justify-center rounded bg-amber-800 hover:bg-amber-700 text-white text-xs font-bold cursor-pointer leading-none">−</button>
-                      </div>
-                    </div>
+                    <span className={`text-lg font-bold tabular-nums ${stockColor(ing.stock)}`}>{ing.stock}</span>
                     <button onClick={() => { setIngEditTarget(ing); setIngEditName(ing.name); setIngEditStock(String(ing.stock)); }}
                       className="w-8 h-8 flex items-center justify-center rounded-md bg-amber-700 hover:bg-amber-600 text-white p-1.5 cursor-pointer transition-colors">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
