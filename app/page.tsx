@@ -16,6 +16,9 @@ export type TieredPrices = Record<string, PriceTier[]>;
 // ── Ingredient ────────────────────────────────────────────────────────────────
 export type Ingredient = { id: string; name: string; stock: number };
 
+// ── DrinkSize ─────────────────────────────────────────────────────────────────
+export type DrinkSize = { key: string; label: string; price: number; stock: number };
+
 // ── Product ───────────────────────────────────────────────────────────────────
 export type Product = {
   id: number;
@@ -27,6 +30,8 @@ export type Product = {
   fillingLabels: Record<string, string>;
   size?: string;
   ingredientMap: Record<string, Record<string, number>>;
+  // Bebidas: multiple presentations with individual stock
+  drinkSizes?: DrinkSize[];
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -64,7 +69,22 @@ export function getVariantKeys(product: Product): Array<{ variantKey: string; la
   return result;
 }
 
+/** Normalize a drink product: if it has legacy price/size fields but no drinkSizes, create one. */
+export function normalizeDrinkSizes(product: Product): Product {
+  if (product.category !== "Bebida") return product;
+  if (product.drinkSizes && product.drinkSizes.length > 0) return product;
+  // Migrate legacy single-size drink
+  const label = product.size ?? "Unidad";
+  return {
+    ...product,
+    drinkSizes: [{ key: "default", label, price: product.price ?? 0, stock: 0 }],
+  };
+}
+
 export type IngredientDeduction = { ingredientId: string; quantity: number };
+
+/** Drink size deductions: each sold unit reduces that drinkSize's stock by 1 */
+export type DrinkDeduction = { productId: number; drinkSizeKey: string; quantity: number };
 
 // ── Default products ──────────────────────────────────────────────────────────
 const INITIAL_PRODUCTS: Product[] = [
@@ -92,13 +112,45 @@ const INITIAL_PRODUCTS: Product[] = [
     },
     ingredientMap: {},
   },
-  { id: 6,  name: "Café Pasado",   category: "Bebida", tieredPrices: {}, sizeLabels: {}, fillingLabels: {}, price: 1.25, size: "Taza",   ingredientMap: {} },
-  { id: 7,  name: "Aromática",     category: "Bebida", tieredPrices: {}, sizeLabels: {}, fillingLabels: {}, price: 1.25, size: "Taza",   ingredientMap: {} },
-  { id: 8,  name: "Gaseosa",       category: "Bebida", tieredPrices: {}, sizeLabels: {}, fillingLabels: {}, price: 1.50, size: "500ml",  ingredientMap: {} },
-  { id: 9,  name: "Agua sin gas",  category: "Bebida", tieredPrices: {}, sizeLabels: {}, fillingLabels: {}, price: 1.00, size: "500ml",  ingredientMap: {} },
-  { id: 10, name: "Agua con gas",  category: "Bebida", tieredPrices: {}, sizeLabels: {}, fillingLabels: {}, price: 1.25, size: "300ml",  ingredientMap: {} },
-  { id: 11, name: "Infusión de frutas deshidratadas", category: "Bebida", tieredPrices: {}, sizeLabels: {}, fillingLabels: {}, price: 2.50, size: "Taza", ingredientMap: {} },
-  { id: 12, name: "Cerveza Pilsener", category: "Bebida", tieredPrices: {}, sizeLabels: {}, fillingLabels: {}, price: 2.50, size: "350ml", ingredientMap: {} },
+  {
+    id: 6, name: "Café Pasado", category: "Bebida",
+    tieredPrices: {}, sizeLabels: {}, fillingLabels: {}, ingredientMap: {},
+    drinkSizes: [{ key: "taza", label: "Taza", price: 1.25, stock: 0 }],
+  },
+  {
+    id: 7, name: "Aromática", category: "Bebida",
+    tieredPrices: {}, sizeLabels: {}, fillingLabels: {}, ingredientMap: {},
+    drinkSizes: [{ key: "taza", label: "Taza", price: 1.25, stock: 0 }],
+  },
+  {
+    id: 8, name: "Gaseosa", category: "Bebida",
+    tieredPrices: {}, sizeLabels: {}, fillingLabels: {}, ingredientMap: {},
+    drinkSizes: [
+      { key: "500ml", label: "500ml", price: 1.50, stock: 0 },
+      { key: "1l",    label: "1L",    price: 2.50, stock: 0 },
+      { key: "2l",    label: "2L",    price: 4.00, stock: 0 },
+    ],
+  },
+  {
+    id: 9, name: "Agua sin gas", category: "Bebida",
+    tieredPrices: {}, sizeLabels: {}, fillingLabels: {}, ingredientMap: {},
+    drinkSizes: [{ key: "500ml", label: "500ml", price: 1.00, stock: 0 }],
+  },
+  {
+    id: 10, name: "Agua con gas", category: "Bebida",
+    tieredPrices: {}, sizeLabels: {}, fillingLabels: {}, ingredientMap: {},
+    drinkSizes: [{ key: "300ml", label: "300ml", price: 1.25, stock: 0 }],
+  },
+  {
+    id: 11, name: "Infusión de frutas deshidratadas", category: "Bebida",
+    tieredPrices: {}, sizeLabels: {}, fillingLabels: {}, ingredientMap: {},
+    drinkSizes: [{ key: "taza", label: "Taza", price: 2.50, stock: 0 }],
+  },
+  {
+    id: 12, name: "Cerveza Pilsener", category: "Bebida",
+    tieredPrices: {}, sizeLabels: {}, fillingLabels: {}, ingredientMap: {},
+    drinkSizes: [{ key: "350ml", label: "350ml", price: 2.50, stock: 0 }],
+  },
 ];
 
 export type OrderItem = { name: string; quantity: number; price: number };
@@ -109,7 +161,8 @@ export type Sale = {
   total: number; status: "pending" | "delivered"; paymentMethod: PaymentMethod;
   tax?: number;
   orderType?: "servir" | "llevar";
-  deductions?: IngredientDeduction[]; // only set for pending "llevar" orders
+  deductions?: IngredientDeduction[];
+  drinkDeductions?: DrinkDeduction[];
 };
 
 export default function Home() {
@@ -118,23 +171,43 @@ export default function Home() {
   const [sales,       setSales]       = useLocalStorage<Sale[]>      ("abuelo-sales",       []);
   const [activeTab,   setActiveTab]   = useState(0);
 
-  // Ref to track which sale IDs have already been delivered, preventing double deduction
   const deliveredRef = useRef<Set<number>>(new Set());
 
   const normalizedProducts = products.map((product) => ({
-    ...product,
-    tieredPrices: product.tieredPrices ?? {},
-    sizeLabels: product.sizeLabels ?? {},
-    fillingLabels: product.fillingLabels ?? {},
-    ingredientMap: product.ingredientMap ?? {},
+    ...normalizeDrinkSizes({
+      ...product,
+      tieredPrices:  product.tieredPrices  ?? {},
+      sizeLabels:    product.sizeLabels    ?? {},
+      fillingLabels: product.fillingLabels ?? {},
+      ingredientMap: product.ingredientMap ?? {},
+    }),
   }));
 
-  // ── addSale: deduct immediately for "servir", defer for "llevar" ──────────
+  // ── applyDrinkDeductions ──────────────────────────────────────────────────
+  const applyDrinkDeductions = (deductions: DrinkDeduction[]) => {
+    if (!deductions || deductions.length === 0) return;
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.category !== "Bebida" || !p.drinkSizes) return p;
+        const relevant = deductions.filter((d) => d.productId === p.id);
+        if (relevant.length === 0) return p;
+        const newSizes = p.drinkSizes.map((ds) => {
+          const ded = relevant.find((d) => d.drinkSizeKey === ds.key);
+          if (!ded) return ds;
+          return { ...ds, stock: Math.max(0, ds.stock - ded.quantity) };
+        });
+        return { ...p, drinkSizes: newSizes };
+      })
+    );
+  };
+
+  // ── addSale ───────────────────────────────────────────────────────────────
   const addSale = (
     items: OrderItem[],
     total: number,
     paymentMethod: PaymentMethod,
     deductions: IngredientDeduction[],
+    drinkDeductions: DrinkDeduction[],
     tax: number = 0,
     orderType: "servir" | "llevar" = "servir"
   ) => {
@@ -150,24 +223,29 @@ export default function Home() {
         paymentMethod,
         tax,
         orderType,
-        deductions: isServir ? undefined : deductions,
+        deductions:      isServir ? undefined : deductions,
+        drinkDeductions: isServir ? undefined : drinkDeductions,
       },
       ...prev,
     ]);
 
-    // "servir": deduct stock right away
-    if (isServir && deductions.length > 0) {
-      const agg: Record<string, number> = {};
-      deductions.forEach(({ ingredientId, quantity }) => {
-        agg[ingredientId] = (agg[ingredientId] ?? 0) + quantity;
-      });
-      setIngredients((prev) =>
-        prev.map((ing) =>
-          agg[ing.id] !== undefined
-            ? { ...ing, stock: Math.max(0, ing.stock - agg[ing.id]) }
-            : ing
-        )
-      );
+    if (isServir) {
+      // Ingredient deductions
+      if (deductions.length > 0) {
+        const agg: Record<string, number> = {};
+        deductions.forEach(({ ingredientId, quantity }) => {
+          agg[ingredientId] = (agg[ingredientId] ?? 0) + quantity;
+        });
+        setIngredients((prev) =>
+          prev.map((ing) =>
+            agg[ing.id] !== undefined
+              ? { ...ing, stock: Math.max(0, ing.stock - agg[ing.id]) }
+              : ing
+          )
+        );
+      }
+      // Drink stock deductions
+      applyDrinkDeductions(drinkDeductions);
     }
   };
 
@@ -194,39 +272,48 @@ export default function Home() {
 
   const deleteSale = (id: number) => setSales((prev) => prev.filter((s) => s.id !== id));
 
-  // ── markDelivered: apply deferred deductions exactly once for "llevar" ────
+  // ── markDelivered ─────────────────────────────────────────────────────────
   const markDelivered = (id: number) => {
-    // Guard: if already processed, skip ingredient deduction entirely
     if (deliveredRef.current.has(id)) {
       setSales((prev) =>
-        prev.map((s) => s.id === id ? { ...s, status: "delivered", deductions: undefined } : s)
+        prev.map((s) =>
+          s.id === id
+            ? { ...s, status: "delivered", deductions: undefined, drinkDeductions: undefined }
+            : s
+        )
       );
       return;
     }
     deliveredRef.current.add(id);
 
-    // Find the sale outside any setter callback to read it exactly once
     const sale = sales.find((s) => s.id === id);
 
-    // Apply deductions if this is a "llevar" order with pending deductions
-    if (sale?.orderType === "llevar" && sale.deductions && sale.deductions.length > 0) {
-      const agg: Record<string, number> = {};
-      sale.deductions.forEach(({ ingredientId, quantity }) => {
-        agg[ingredientId] = (agg[ingredientId] ?? 0) + quantity;
-      });
-      setIngredients((prev) =>
-        prev.map((ing) =>
-          agg[ing.id] !== undefined
-            ? { ...ing, stock: Math.max(0, ing.stock - agg[ing.id]) }
-            : ing
-        )
-      );
+    if (sale?.orderType === "llevar") {
+      // Ingredient deductions
+      if (sale.deductions && sale.deductions.length > 0) {
+        const agg: Record<string, number> = {};
+        sale.deductions.forEach(({ ingredientId, quantity }) => {
+          agg[ingredientId] = (agg[ingredientId] ?? 0) + quantity;
+        });
+        setIngredients((prev) =>
+          prev.map((ing) =>
+            agg[ing.id] !== undefined
+              ? { ...ing, stock: Math.max(0, ing.stock - agg[ing.id]) }
+              : ing
+          )
+        );
+      }
+      // Drink stock deductions
+      if (sale.drinkDeductions && sale.drinkDeductions.length > 0) {
+        applyDrinkDeductions(sale.drinkDeductions);
+      }
     }
 
-    // Mark as delivered and clear deductions
     setSales((prev) =>
       prev.map((s) =>
-        s.id === id ? { ...s, status: "delivered", deductions: undefined } : s
+        s.id === id
+          ? { ...s, status: "delivered", deductions: undefined, drinkDeductions: undefined }
+          : s
       )
     );
   };

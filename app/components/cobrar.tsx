@@ -7,17 +7,20 @@ import {
   TieredPrices,
   Ingredient,
   Product,
+  DrinkSize,
   IngredientDeduction,
+  DrinkDeduction,
   PaymentMethod,
 } from "../page";
 
-// One entry in the cart: a specific (product, size, filling) combo.
-// price is stored as the per-unit price AT TIME OF CHECKOUT (recalculated on render).
+// One entry in the cart.
+// For food: sizeKey / fillingKey as before.
+// For drinks: sizeKey = drinkSize.key, fillingKey = "none".
 type CartEntry = {
-  key: string;         // `${productId}-${sizeKey}-${fillingKey}`
+  key: string;
   productId: number;
   sizeKey: string;
-  fillingKey: string;  // "none" when no relleno
+  fillingKey: string;
   quantity: number;
 };
 
@@ -50,16 +53,13 @@ function variantKey(sizeKey: string, fillingKey: string): string {
   return `${sizeKey}-${fillingKey}`;
 }
 
-/** Ingredient usage for a specific variant */
+/** Ingredient usage for a specific variant (food only) */
 function getIngredientUsage(product: Product, vk: string): Record<string, number> {
   return product.ingredientMap?.[vk] ?? {};
 }
 
-/**
- * Max units this variant can still add given ingredient stock AND current cart reservations.
- * Returns null = untracked (no ingredients mapped).
- */
-function getEffectiveCapacity(
+/** Max addable units for a food variant given ingredient stock */
+function getFoodEffectiveCapacity(
   product: Product,
   sizeKey: string,
   fillingKey: string,
@@ -83,12 +83,15 @@ function getEffectiveCapacity(
   return min === Infinity ? null : currentQtyInCart + min;
 }
 
-/** Stock badge for display */
-function stockBadge(remaining: number | null): { label: string; cls: string } | null {
-  if (remaining === null) return null;
-  if (remaining === 0)   return { label: "Agotado",            cls: "bg-red-900/60 text-red-400 border-red-700" };
-  if (remaining <= 5)    return { label: `${remaining} disp.`, cls: "bg-orange-900/50 text-orange-400 border-orange-700" };
-  return                        { label: `${remaining} disp.`, cls: "bg-green-900/30 text-green-500 border-green-800" };
+/** Max addable units for a drink size given its own stock */
+function getDrinkEffectiveCapacity(
+  drinkSize: DrinkSize,
+  cartQty: number,
+): number | null {
+  // stock === 0 AND we haven't added any → untracked (no stock set)
+  // We use stock > 0 OR cartQty > 0 as signal that tracking is active
+  if (drinkSize.stock === 0 && cartQty === 0) return null; // untracked
+  return drinkSize.stock; // absolute max (not cumulative)
 }
 
 // ── Price tier display ────────────────────────────────────────────────────────
@@ -96,11 +99,9 @@ function stockBadge(remaining: number | null): { label: string; cls: string } | 
 function TierBadges({
   tiers,
   currentQty,
-  sizeLabel,
 }: {
   tiers: PriceTier[];
   currentQty: number;
-  sizeLabel: string;
 }) {
   if (!tiers || tiers.length <= 1) return null;
   const sorted = [...tiers].sort((a, b) => a.minQty - b.minQty);
@@ -139,6 +140,7 @@ export default function Cobrar(props: {
     total: number,
     paymentMethod: PaymentMethod,
     deductions: IngredientDeduction[],
+    drinkDeductions: DrinkDeduction[],
     tax: number,
     orderType: "servir" | "llevar"
   ) => void;
@@ -153,7 +155,7 @@ export default function Cobrar(props: {
   const [selectedPayment, setSelectedPayment] = useState<PaymentMethod | null>(null);
   const [orderType, setOrderType] = useState<"servir" | "llevar" | null>(null);
 
-  // Selected filling per product (productId → fillingKey)
+  // Selected filling per food product (productId → fillingKey)
   const [selectedFilling, setSelectedFilling] = useState<Record<number, string>>({});
 
   const totalBlockRef    = useRef<HTMLDivElement>(null);
@@ -175,11 +177,11 @@ export default function Cobrar(props: {
 
   const allProducts = [...props.foodProducts, ...props.drinkProducts];
 
-  // Ingredient reservations across entire cart (ingId → total units reserved)
+  // Ingredient reservations across entire cart (food only)
   const cartReservations: Record<string, number> = {};
   for (const entry of cart) {
     const product = allProducts.find((p) => p.id === entry.productId);
-    if (!product) continue;
+    if (!product || product.category !== "Comida") continue;
     const usage = getIngredientUsage(product, variantKey(entry.sizeKey, entry.fillingKey));
     for (const [ingId, qtyPerUnit] of Object.entries(usage)) {
       cartReservations[ingId] = (cartReservations[ingId] ?? 0) + entry.quantity * qtyPerUnit;
@@ -199,12 +201,24 @@ export default function Cobrar(props: {
       setCart((prev) => prev.filter((e) => e.key !== key));
       return;
     }
-    const existing = cart.find((e) => e.key === key);
-    const currentQ = existing?.quantity ?? 0;
-    const capacity = getEffectiveCapacity(
-      product, sizeKey, fillingKey, ingredientById, cartReservations, currentQ
-    );
-    const capped = capacity !== null ? Math.min(newQty, capacity) : newQty;
+
+    let capped = newQty;
+    if (product.category === "Comida") {
+      const existing = cart.find((e) => e.key === key);
+      const currentQ = existing?.quantity ?? 0;
+      const capacity = getFoodEffectiveCapacity(
+        product, sizeKey, fillingKey, ingredientById, cartReservations, currentQ
+      );
+      capped = capacity !== null ? Math.min(newQty, capacity) : newQty;
+    } else {
+      // Drink: cap by drinkSize stock
+      const ds = product.drinkSizes?.find((d) => d.key === sizeKey);
+      if (ds) {
+        const cap = getDrinkEffectiveCapacity(ds, cart.find((e) => e.key === key)?.quantity ?? 0);
+        if (cap !== null) capped = Math.min(newQty, cap);
+      }
+    }
+
     setCart((prev) => {
       const ex = prev.find((e) => e.key === key);
       if (ex) return prev.map((e) => e.key === key ? { ...e, quantity: capped } : e);
@@ -215,10 +229,20 @@ export default function Cobrar(props: {
   const increment = useCallback((product: Product, sizeKey: string, fillingKey: string) => {
     const key = makeCartKey(product.id, sizeKey, fillingKey);
     const current = cart.find((e) => e.key === key)?.quantity ?? 0;
-    const capacity = getEffectiveCapacity(
-      product, sizeKey, fillingKey, ingredientById, cartReservations, current
-    );
-    if (capacity !== null && current >= capacity) return;
+
+    if (product.category === "Comida") {
+      const capacity = getFoodEffectiveCapacity(
+        product, sizeKey, fillingKey, ingredientById, cartReservations, current
+      );
+      if (capacity !== null && current >= capacity) return;
+    } else {
+      const ds = product.drinkSizes?.find((d) => d.key === sizeKey);
+      if (ds) {
+        const cap = getDrinkEffectiveCapacity(ds, current);
+        if (cap !== null && current >= cap) return;
+      }
+    }
+
     setCart((prev) => {
       const ex = prev.find((e) => e.key === key);
       if (ex) return prev.map((e) => e.key === key ? { ...e, quantity: e.quantity + 1 } : e);
@@ -250,6 +274,10 @@ export default function Cobrar(props: {
   function getEntryPrice(entry: CartEntry): number {
     const product = allProducts.find((p) => p.id === entry.productId);
     if (!product) return 0;
+    if (product.category === "Bebida") {
+      const ds = product.drinkSizes?.find((d) => d.key === entry.sizeKey);
+      return ds ? ds.price : product.price ?? 0;
+    }
     if (!product.tieredPrices[entry.sizeKey]) return product.price ?? 0;
     const totalQtyForSize = sizeTotals[`${entry.productId}::${entry.sizeKey}`] ?? entry.quantity;
     return getTierPrice(product, entry.sizeKey, totalQtyForSize);
@@ -269,25 +297,47 @@ export default function Cobrar(props: {
 
     const saleItems: SaleItem[] = cart.map((entry) => {
       const product = allProducts.find((p) => p.id === entry.productId);
-      const sizeLabel    = product?.sizeLabels[entry.sizeKey] ?? entry.sizeKey;
-      const fillingLabel = entry.fillingKey !== "none"
-        ? (product?.fillingLabels[entry.fillingKey] ?? entry.fillingKey)
-        : null;
-      const name = [product?.name ?? "", sizeLabel, fillingLabel].filter(Boolean).join(" ");
+      let name: string;
+      if (product?.category === "Bebida") {
+        const ds = product.drinkSizes?.find((d) => d.key === entry.sizeKey);
+        name = [product?.name ?? "", ds?.label ?? entry.sizeKey].filter(Boolean).join(" ");
+      } else {
+        const sizeLabel    = product?.sizeLabels[entry.sizeKey] ?? entry.sizeKey;
+        const fillingLabel = entry.fillingKey !== "none"
+          ? (product?.fillingLabels[entry.fillingKey] ?? entry.fillingKey)
+          : null;
+        name = [product?.name ?? "", sizeLabel, fillingLabel].filter(Boolean).join(" ");
+      }
       return { name, quantity: entry.quantity, price: getEntryPrice(entry) };
     });
 
+    // Food ingredient deductions
     const deductions: IngredientDeduction[] = [];
     for (const entry of cart) {
       const product = allProducts.find((p) => p.id === entry.productId);
-      if (!product) continue;
+      if (!product || product.category !== "Comida") continue;
       const usage = getIngredientUsage(product, variantKey(entry.sizeKey, entry.fillingKey));
       for (const [ingId, qtyPerUnit] of Object.entries(usage)) {
         deductions.push({ ingredientId: ingId, quantity: entry.quantity * qtyPerUnit });
       }
     }
 
-    props.onSaleComplete(saleItems, total, selectedPayment, deductions, taxEnabled ? taxAmount : 0, orderType);
+    // Drink stock deductions
+    const drinkDeductions: DrinkDeduction[] = [];
+    for (const entry of cart) {
+      const product = allProducts.find((p) => p.id === entry.productId);
+      if (!product || product.category !== "Bebida") continue;
+      const ds = product.drinkSizes?.find((d) => d.key === entry.sizeKey);
+      if (!ds || ds.stock === 0) continue; // untracked → skip
+      drinkDeductions.push({ productId: product.id, drinkSizeKey: entry.sizeKey, quantity: entry.quantity });
+    }
+
+    props.onSaleComplete(
+      saleItems, total, selectedPayment,
+      deductions, drinkDeductions,
+      taxEnabled ? taxAmount : 0,
+      orderType
+    );
     setCart([]);
     setSelectedFilling({});
     setDiscount(0);
@@ -307,20 +357,16 @@ export default function Cobrar(props: {
     setOrderType(null);
   };
 
-  // ── ProductCard ─────────────────────────────────────────────────────────────
+  // ── FoodProductCard ─────────────────────────────────────────────────────────
 
-  const ProductCard = ({ product }: { product: Product }) => {
-    const isBebida = product.category === "Bebida";
-    const sizes    = isBebida
-      ? [{ key: "single", label: product.size ?? "Unidad" }]
-      : getAvailableSizes(product);
+  const FoodProductCard = ({ product }: { product: Product }) => {
+    const sizes    = getAvailableSizes(product);
     const fillings = getAvailableFillings(product);
     const hasRelleno = fillings.length > 0;
-
     const currentFilling = hasRelleno ? (selectedFilling[product.id] ?? null) : "none";
 
     return (
-      <div className={`bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4 flex flex-col ${isBebida ? "col-span-1" : "col-span-2"} gap-3`}>
+      <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4 flex flex-col col-span-2 gap-3">
         <h2 className="font-bold text-sm">{product.name}</h2>
 
         {/* Relleno selector */}
@@ -331,12 +377,7 @@ export default function Cobrar(props: {
               {fillings.map(({ key, label }) => (
                 <button
                   key={key}
-                  onClick={() =>
-                    setSelectedFilling((prev) => ({
-                      ...prev,
-                      [product.id]: prev[product.id] === key ? key : key,
-                    }))
-                  }
+                  onClick={() => setSelectedFilling((prev) => ({ ...prev, [product.id]: key }))}
                   className={`py-1 px-3 text-xs border-2 rounded-lg font-bold cursor-pointer transition-colors ${
                     currentFilling === key
                       ? "bg-amber-600 border-amber-600 text-white"
@@ -363,14 +404,12 @@ export default function Cobrar(props: {
             const tiers = product.tieredPrices[sizeKey] ?? [];
 
             const capacity = (currentFilling || !hasRelleno)
-              ? getEffectiveCapacity(
-                  product, sizeKey, fk, ingredientById,
-                  cartReservations, qty
+              ? getFoodEffectiveCapacity(
+                  product, sizeKey, fk, ingredientById, cartReservations, qty
                 )
               : null;
             const outOfStock = capacity !== null && capacity === 0 && qty === 0;
             const atMax      = capacity !== null && qty >= capacity;
-
             const addlCapacity = capacity !== null ? Math.max(0, capacity - qty) : null;
 
             const sortedTiers = [...tiers].sort((a, b) => a.minQty - b.minQty);
@@ -398,8 +437,9 @@ export default function Cobrar(props: {
                       )}
                       {!outOfStock && addlCapacity !== null && addlCapacity + qty <= 5 && (
                         <span className={`text-[9px] font-bold uppercase border rounded-full px-2 py-0.5 ${
-                          addlCapacity + qty === 0 ? "text-red-400 bg-red-900/40 border-red-800"
-                          : "text-orange-400 bg-orange-900/30 border-orange-800"
+                          addlCapacity + qty === 0
+                            ? "text-red-400 bg-red-900/40 border-red-800"
+                            : "text-orange-400 bg-orange-900/30 border-orange-800"
                         }`}>
                           {addlCapacity + qty} disp.
                         </span>
@@ -430,12 +470,9 @@ export default function Cobrar(props: {
                           ? "bg-amber-900/30 text-amber-800 cursor-not-allowed"
                           : "bg-amber-700 hover:bg-amber-600 text-white cursor-pointer"
                       }`}
-                    >
-                      −
-                    </button>
+                    >−</button>
                     <input
-                      type="number"
-                      min={0}
+                      type="number" min={0}
                       value={qty === 0 ? "" : qty}
                       placeholder="0"
                       onChange={(e) => {
@@ -453,9 +490,7 @@ export default function Cobrar(props: {
                     />
                     <button
                       onClick={() => {
-                        if (!hasRelleno || currentFilling) {
-                          increment(product, sizeKey, fk);
-                        }
+                        if (!hasRelleno || currentFilling) increment(product, sizeKey, fk);
                       }}
                       disabled={outOfStock || atMax || (hasRelleno && !currentFilling)}
                       className={`w-8 h-8 rounded-lg font-bold text-lg transition-colors ${
@@ -463,17 +498,11 @@ export default function Cobrar(props: {
                           ? "bg-amber-900/30 text-amber-800 cursor-not-allowed"
                           : "bg-amber-700 hover:bg-amber-600 text-white cursor-pointer"
                       }`}
-                    >
-                      +
-                    </button>
+                    >+</button>
                   </div>
                 </div>
 
-                <TierBadges
-                  tiers={tiers}
-                  currentQty={totalQtyForSize}
-                  sizeLabel={sizeLabel}
-                />
+                <TierBadges tiers={tiers} currentQty={totalQtyForSize} />
 
                 {!outOfStock && tiers.length > 0 && (
                   <div className="flex gap-1.5 flex-wrap pt-0.5">
@@ -484,9 +513,7 @@ export default function Cobrar(props: {
                           key={n}
                           disabled={disabled}
                           onClick={() => {
-                            if (!hasRelleno || currentFilling) {
-                              setQty(product, sizeKey, fk, qty + n);
-                            }
+                            if (!hasRelleno || currentFilling) setQty(product, sizeKey, fk, qty + n);
                           }}
                           className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-colors ${
                             disabled
@@ -512,6 +539,109 @@ export default function Cobrar(props: {
     );
   };
 
+  // ── DrinkProductCard ────────────────────────────────────────────────────────
+
+  const DrinkProductCard = ({ product }: { product: Product }) => {
+    const drinkSizes = product.drinkSizes ?? [];
+
+    return (
+      <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4 flex flex-col gap-3 col-span-1">
+        <h2 className="font-bold text-sm">{product.name}</h2>
+
+        <div className="flex flex-col gap-2">
+          {drinkSizes.map((ds) => {
+            const ck = makeCartKey(product.id, ds.key, "none");
+            const entry = cart.find((e) => e.key === ck);
+            const qty = entry?.quantity ?? 0;
+
+            // Stock tracking: only active if stock > 0 or already in cart
+            const cap = getDrinkEffectiveCapacity(ds, qty);
+            const outOfStock = cap !== null && cap === 0 && qty === 0;
+            const atMax      = cap !== null && qty >= cap;
+            const stockTracked = cap !== null;
+
+            return (
+              <div
+                key={ds.key}
+                className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
+                  outOfStock
+                    ? "border-red-900/60 bg-red-950/10 opacity-60"
+                    : qty > 0
+                    ? "border-amber-600 bg-amber-900/40"
+                    : "border-amber-800/60 bg-amber-900/20"
+                }`}
+              >
+                {/* Label + price + stock badge */}
+                <div className="flex flex-col flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-amber-200">{ds.label}</span>
+                    {stockTracked && (
+                      <span className={`text-[9px] font-bold uppercase border rounded-full px-2 py-0.5 ${
+                        outOfStock
+                          ? "text-red-400 bg-red-900/40 border-red-800"
+                          : ds.stock <= 3
+                          ? "text-orange-400 bg-orange-900/30 border-orange-800"
+                          : "text-green-500 bg-green-900/20 border-green-900"
+                      }`}>
+                        {outOfStock ? "Agotado" : `${ds.stock - qty} disp.`}
+                      </span>
+                    )}
+                  </div>
+                  <span className={`text-base font-bold tabular-nums ${qty > 0 ? "text-amber-400" : "text-amber-600"}`}>
+                    ${ds.price.toFixed(2)}
+                    <span className="text-[10px] text-amber-700 font-normal ml-1">/ u.</span>
+                  </span>
+                  {qty > 0 && (
+                    <span className="text-[10px] text-amber-600 tabular-nums">
+                      Subtotal: ${(ds.price * qty).toFixed(2)}
+                    </span>
+                  )}
+                </div>
+
+                {/* Stepper */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => decrement(ck)}
+                    disabled={qty === 0}
+                    className={`w-8 h-8 rounded-lg font-bold text-lg transition-colors ${
+                      qty === 0
+                        ? "bg-amber-900/30 text-amber-800 cursor-not-allowed"
+                        : "bg-amber-700 hover:bg-amber-600 text-white cursor-pointer"
+                    }`}
+                  >−</button>
+                  <input
+                    type="number" min={0}
+                    value={qty === 0 ? "" : qty}
+                    placeholder="0"
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      setQty(product, ds.key, "none", isNaN(v) ? 0 : v);
+                    }}
+                    disabled={outOfStock && qty === 0}
+                    className={`w-12 text-center bg-amber-950/60 border-2 rounded-lg py-1 text-sm font-bold focus:outline-none transition-colors tabular-nums ${
+                      qty > 0
+                        ? "border-amber-600 text-amber-300 focus:border-amber-400"
+                        : "border-amber-800 text-amber-700 focus:border-amber-600"
+                    }`}
+                  />
+                  <button
+                    onClick={() => increment(product, ds.key, "none")}
+                    disabled={outOfStock || atMax}
+                    className={`w-8 h-8 rounded-lg font-bold text-lg transition-colors ${
+                      outOfStock || atMax
+                        ? "bg-amber-900/30 text-amber-800 cursor-not-allowed"
+                        : "bg-amber-700 hover:bg-amber-600 text-white cursor-pointer"
+                    }`}
+                  >+</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   // ── Cart display ─────────────────────────────────────────────────────────────
 
   const showFloatingBar = total > 0 && !isTotalVisible;
@@ -524,7 +654,7 @@ export default function Cobrar(props: {
         <>
           <h3 className="uppercase text-amber-500 font-bold text-sm">Comida</h3>
           <div className="grid lg:grid-cols-2 md:grid-cols-2 grid-cols-1 gap-3">
-            {props.foodProducts.map((p) => <ProductCard key={p.id} product={p} />)}
+            {props.foodProducts.map((p) => <FoodProductCard key={p.id} product={p} />)}
           </div>
         </>
       )}
@@ -534,7 +664,7 @@ export default function Cobrar(props: {
         <>
           <h3 className="uppercase text-amber-500 font-bold text-sm">Bebidas</h3>
           <div className="grid lg:grid-cols-3 md:grid-cols-2 grid-cols-1 gap-2.5">
-            {props.drinkProducts.map((p) => <ProductCard key={p.id} product={p} />)}
+            {props.drinkProducts.map((p) => <DrinkProductCard key={p.id} product={p} />)}
           </div>
         </>
       )}
@@ -548,13 +678,20 @@ export default function Cobrar(props: {
         ) : (
           <div className="flex flex-col gap-1">
             {cart.map((entry) => {
-              const product     = allProducts.find((p) => p.id === entry.productId);
-              const sizeLabel   = product?.sizeLabels[entry.sizeKey] ?? entry.sizeKey;
-              const fillingLabel = entry.fillingKey !== "none"
-                ? (product?.fillingLabels[entry.fillingKey] ?? entry.fillingKey)
-                : null;
-              const unitPrice   = getEntryPrice(entry);
-              const lineTotal   = unitPrice * entry.quantity;
+              const product = allProducts.find((p) => p.id === entry.productId);
+              let displayName: string;
+              if (product?.category === "Bebida") {
+                const ds = product.drinkSizes?.find((d) => d.key === entry.sizeKey);
+                displayName = ds?.label ?? entry.sizeKey;
+              } else {
+                const sizeLabel    = product?.sizeLabels[entry.sizeKey] ?? entry.sizeKey;
+                const fillingLabel = entry.fillingKey !== "none"
+                  ? (product?.fillingLabels[entry.fillingKey] ?? entry.fillingKey)
+                  : null;
+                displayName = [sizeLabel, fillingLabel].filter(Boolean).join(" · ");
+              }
+              const unitPrice = getEntryPrice(entry);
+              const lineTotal = unitPrice * entry.quantity;
 
               return (
                 <div
@@ -564,9 +701,7 @@ export default function Cobrar(props: {
                   <div className="flex-1 flex flex-col gap-0.5 min-w-0">
                     <span className="text-xs font-semibold truncate">
                       {product?.name ?? "?"}{" "}
-                      <span className="text-amber-700 font-normal">
-                        {[sizeLabel, fillingLabel].filter(Boolean).join(" · ")}
-                      </span>
+                      <span className="text-amber-700 font-normal">{displayName}</span>
                     </span>
                     <span className="text-[10px] text-amber-700 tabular-nums">
                       ${unitPrice.toFixed(2)} × {entry.quantity}
@@ -576,9 +711,7 @@ export default function Cobrar(props: {
                     <button
                       onClick={() => decrement(entry.key)}
                       className="w-7 h-7 flex items-center justify-center rounded-md bg-amber-800 hover:bg-amber-700 text-white font-bold cursor-pointer"
-                    >
-                      −
-                    </button>
+                    >−</button>
                     <span className="text-sm font-bold w-6 text-center tabular-nums">{entry.quantity}</span>
                     <button
                       onClick={() => {
@@ -586,9 +719,7 @@ export default function Cobrar(props: {
                         if (product) increment(product, entry.sizeKey, entry.fillingKey);
                       }}
                       className="w-7 h-7 flex items-center justify-center rounded-md bg-amber-800 hover:bg-amber-700 text-white font-bold cursor-pointer"
-                    >
-                      +
-                    </button>
+                    >+</button>
                   </div>
                   <p className="text-sm font-bold text-amber-500 w-16 text-right tabular-nums">
                     ${lineTotal.toFixed(2)}
@@ -663,10 +794,7 @@ export default function Cobrar(props: {
               <span className="text-[10px] uppercase tracking-widest text-blue-400/70">Tasa</span>
               <div className="relative flex items-center">
                 <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={0.1}
+                  type="number" min={0} max={100} step={0.1}
                   value={taxRateInput}
                   onChange={(e) => {
                     setTaxRateInput(e.target.value);

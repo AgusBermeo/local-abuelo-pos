@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 
-// ── Types (mirrored from page.tsx to avoid circular imports) ──────────────────
-type PriceTier   = { minQty: number; pricePerUnit: number };
+// ── Types ─────────────────────────────────────────────────────────────────────
+type PriceTier    = { minQty: number; pricePerUnit: number };
 type TieredPrices = Record<string, PriceTier[]>;
-type Ingredient  = { id: string; name: string; stock: number };
+type Ingredient   = { id: string; name: string; stock: number };
+type DrinkSize    = { key: string; label: string; price: number; stock: number };
 
 type Product = {
   id: number;
@@ -17,6 +18,7 @@ type Product = {
   fillingLabels: Record<string, string>;
   size?: string;
   ingredientMap: Record<string, Record<string, number>>;
+  drinkSizes?: DrinkSize[];
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -71,17 +73,6 @@ function Field({ label, error, children }: { label: string; error?: string; chil
   );
 }
 
-function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: () => void }) {
-  return (
-    <label className="flex items-center justify-between cursor-pointer gap-3">
-      <span className="text-xs text-amber-200">{label}</span>
-      <div onClick={onChange} className={`w-10 h-5 rounded-full relative transition-colors cursor-pointer ${value ? "bg-amber-500" : "bg-amber-800"}`}>
-        <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${value ? "translate-x-5" : "translate-x-0.5"}`} />
-      </div>
-    </label>
-  );
-}
-
 function StepperInput({ value, onChange, colorize = true, small = false }: {
   value: string; onChange: (v: string) => void; colorize?: boolean; small?: boolean;
 }) {
@@ -113,22 +104,15 @@ function CloseBtn({ onClick }: { onClick: () => void }) {
   );
 }
 
-// ── Tier editor for one size ──────────────────────────────────────────────────
+// ── Tier editor for one food size ─────────────────────────────────────────────
 
 type TierRow = { id: string; minQty: string; pricePerUnit: string };
 
 function TierEditor({
-  sizeKey,
-  sizeLabel,
-  rows,
-  onChange,
-  errors,
+  sizeKey, sizeLabel, rows, onChange, errors,
 }: {
-  sizeKey: string;
-  sizeLabel: string;
-  rows: TierRow[];
-  onChange: (rows: TierRow[]) => void;
-  errors: Record<string, string>;
+  sizeKey: string; sizeLabel: string; rows: TierRow[];
+  onChange: (rows: TierRow[]) => void; errors: Record<string, string>;
 }) {
   const update = (id: string, field: "minQty" | "pricePerUnit", val: string) =>
     onChange(rows.map((r) => (r.id === id ? { ...r, [field]: val } : r)));
@@ -136,23 +120,15 @@ function TierEditor({
   return (
     <div className="flex flex-col gap-2 bg-amber-900/20 border border-amber-800/60 rounded-lg p-3">
       <p className="text-[10px] uppercase tracking-widest font-bold text-amber-400">{sizeLabel}</p>
-
-      {/* Header */}
       <div className="grid grid-cols-[1fr_1fr_2rem] gap-2 text-[9px] uppercase tracking-widest text-yellow-700 px-1">
-        <span>Mín. unidades</span>
-        <span>Precio / u. ($)</span>
-        <span />
+        <span>Mín. unidades</span><span>Precio / u. ($)</span><span />
       </div>
-
       {rows.map((row, idx) => (
         <div key={row.id} className="grid grid-cols-[1fr_1fr_2rem] gap-2 items-start">
           <div className="flex flex-col gap-1">
-            <input
-              type="number" min={1} step={1}
-              value={row.minQty}
+            <input type="number" min={1} step={1} value={row.minQty}
               onChange={(e) => update(row.id, "minQty", e.target.value)}
-              disabled={idx === 0}
-              placeholder="1"
+              disabled={idx === 0} placeholder="1"
               className={`${inputClass} w-full text-center ${idx === 0 ? "opacity-50 cursor-not-allowed" : ""} ${errors[`${sizeKey}_minQty_${row.id}`] ? "border-red-600" : ""}`}
             />
             {errors[`${sizeKey}_minQty_${row.id}`] && (
@@ -162,9 +138,7 @@ function TierEditor({
           <div className="flex flex-col gap-1">
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500 text-sm font-bold pointer-events-none">$</span>
-              <input
-                type="number" min={0} step={0.01}
-                value={row.pricePerUnit}
+              <input type="number" min={0} step={0.01} value={row.pricePerUnit}
                 onChange={(e) => update(row.id, "pricePerUnit", e.target.value)}
                 placeholder="0.00"
                 className={`${inputClass} pl-7 w-full ${errors[`${sizeKey}_price_${row.id}`] ? "border-red-600" : ""}`}
@@ -182,12 +156,9 @@ function TierEditor({
                 ? "border-amber-900 text-amber-900 cursor-not-allowed"
                 : "border-red-900 hover:border-red-700 text-red-700 hover:text-red-500 cursor-pointer"
             }`}
-          >
-            ×
-          </button>
+          >×</button>
         </div>
       ))}
-
       <button
         onClick={() => onChange([...rows, { id: `r_${Date.now()}_${Math.random()}`, minQty: "", pricePerUnit: "" }])}
         className="self-start text-[10px] uppercase tracking-widest font-bold text-amber-600 hover:text-amber-400 border border-amber-800 hover:border-amber-600 rounded-lg px-3 py-1.5 transition-colors cursor-pointer"
@@ -198,13 +169,119 @@ function TierEditor({
   );
 }
 
+// ── DrinkSizeEditor ───────────────────────────────────────────────────────────
+
+type DrinkSizeRow = { id: string; label: string; price: string; stock: string };
+
+function DrinkSizeEditor({
+  rows, onChange, errors,
+}: {
+  rows: DrinkSizeRow[];
+  onChange: (rows: DrinkSizeRow[]) => void;
+  errors: Record<string, string>;
+}) {
+  const update = (id: string, field: keyof Omit<DrinkSizeRow, "id">, val: string) =>
+    onChange(rows.map((r) => (r.id === id ? { ...r, [field]: val } : r)));
+
+  const addRow = () =>
+    onChange([...rows, { id: `ds_${Date.now()}_${Math.random()}`, label: "", price: "", stock: "0" }]);
+
+  const removeRow = (id: string) => {
+    if (rows.length <= 1) return;
+    onChange(rows.filter((r) => r.id !== id));
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Header */}
+      <div className="grid grid-cols-[1fr_auto_auto_2rem] gap-2 text-[9px] uppercase tracking-widest text-yellow-700 px-1">
+        <span>Presentación</span>
+        <span className="w-24">Precio ($)</span>
+        <span className="w-20">Stock inicial</span>
+        <span />
+      </div>
+
+      {rows.map((row) => {
+        const stockNum = Number(row.stock);
+        const hasStock = row.stock !== "" && !isNaN(stockNum);
+        return (
+          <div key={row.id} className="grid grid-cols-[1fr_auto_auto_2rem] gap-2 items-start">
+            {/* Label */}
+            <div className="flex flex-col gap-1">
+              <input
+                type="text"
+                value={row.label}
+                onChange={(e) => update(row.id, "label", e.target.value)}
+                placeholder="ej: 500ml, 1L, Taza…"
+                className={`${inputClass} w-full ${errors[`ds_label_${row.id}`] ? "border-red-600" : ""}`}
+              />
+              {errors[`ds_label_${row.id}`] && (
+                <p className="text-red-400 text-[10px]">{errors[`ds_label_${row.id}`]}</p>
+              )}
+            </div>
+
+            {/* Price */}
+            <div className="flex flex-col gap-1 w-24">
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500 text-sm font-bold pointer-events-none">$</span>
+                <input
+                  type="number" min={0} step={0.01}
+                  value={row.price}
+                  onChange={(e) => update(row.id, "price", e.target.value)}
+                  placeholder="0.00"
+                  className={`${inputClass} pl-7 w-full ${errors[`ds_price_${row.id}`] ? "border-red-600" : ""}`}
+                />
+              </div>
+              {errors[`ds_price_${row.id}`] && (
+                <p className="text-red-400 text-[10px]">{errors[`ds_price_${row.id}`]}</p>
+              )}
+            </div>
+
+            {/* Stock */}
+            <div className="flex flex-col gap-1 w-20">
+              <input
+                type="number" min={0} step={1}
+                value={row.stock}
+                onChange={(e) => update(row.id, "stock", e.target.value)}
+                placeholder="0"
+                className={`${inputClass} w-full text-center tabular-nums ${
+                  hasStock ? stockBorderFocus(stockNum) : ""
+                } ${hasStock ? stockColor(stockNum) : ""}`}
+              />
+            </div>
+
+            {/* Remove */}
+            <button
+              onClick={() => removeRow(row.id)}
+              disabled={rows.length <= 1}
+              className={`h-9 flex items-center justify-center rounded-lg border-2 text-sm transition-colors ${
+                rows.length <= 1
+                  ? "border-amber-900 text-amber-900 cursor-not-allowed"
+                  : "border-red-900 hover:border-red-700 text-red-700 hover:text-red-500 cursor-pointer"
+              }`}
+            >×</button>
+          </div>
+        );
+      })}
+
+      <button
+        onClick={addRow}
+        className="self-start text-[10px] uppercase tracking-widest font-bold text-amber-600 hover:text-amber-400 border border-amber-800 hover:border-amber-600 rounded-lg px-3 py-1.5 transition-colors cursor-pointer"
+      >
+        + Agregar presentación
+      </button>
+
+      <p className="text-[10px] text-amber-800">
+        El stock en 0 significa "sin seguimiento de stock". Ingresa un valor mayor para activar el control de inventario para esa presentación.
+      </p>
+    </div>
+  );
+}
+
 // ── Ingredient assigner ───────────────────────────────────────────────────────
 
 function IngredientAssigner({
-  variantKeys,
-  ingredientMap,
-  ingredients,
-  onChange,
+  variantKeys, ingredientMap, ingredients, onChange,
 }: {
   variantKeys:   Array<{ variantKey: string; label: string }>;
   ingredientMap: Record<string, Record<string, string>>;
@@ -278,9 +355,7 @@ function IngredientAssigner({
                       small
                     />
                     {active && (
-                      <span className="text-[10px] text-amber-600 shrink-0 w-16 text-right">
-                        ×{num} por unidad
-                      </span>
+                      <span className="text-[10px] text-amber-600 shrink-0 w-16 text-right">×{num} por unidad</span>
                     )}
                   </div>
                 );
@@ -293,17 +368,20 @@ function IngredientAssigner({
   );
 }
 
-// ── Product form ──────────────────────────────────────────────────────────────
+// ── Product form types ────────────────────────────────────────────────────────
 
 type ProductForm = {
   name: string;
   category: "Comida" | "Bebida";
+  // Comida
   price: string;
   size: string;
   tierRows: Record<string, TierRow[]>;
   sizeEnabled: Record<string, boolean>;
   hasRelleno: boolean;
   ingredientMap: Record<string, Record<string, string>>;
+  // Bebida
+  drinkSizeRows: DrinkSizeRow[];
 };
 
 const FOOD_SIZE_KEYS   = ["grande", "normal", "bocadito"] as const;
@@ -311,6 +389,10 @@ const FOOD_SIZE_LABELS: Record<string, string> = { grande: "Grande", normal: "No
 
 function defaultTierRow(minQty = 1, price = ""): TierRow {
   return { id: `r_${Date.now()}_${Math.random()}`, minQty: String(minQty), pricePerUnit: price };
+}
+
+function defaultDrinkSizeRow(): DrinkSizeRow {
+  return { id: `ds_${Date.now()}_${Math.random()}`, label: "", price: "", stock: "0" };
 }
 
 const EMPTY_FORM: ProductForm = {
@@ -323,6 +405,7 @@ const EMPTY_FORM: ProductForm = {
   sizeEnabled: { grande: true, normal: true, bocadito: true },
   hasRelleno: true,
   ingredientMap: {},
+  drinkSizeRows: [defaultDrinkSizeRow()],
 };
 
 function productToForm(product: Product): ProductForm {
@@ -349,15 +432,22 @@ function productToForm(product: Product): ProductForm {
       ...EMPTY_FORM, name: product.name, category: "Comida",
       hasRelleno: true,
       tierRows, sizeEnabled, ingredientMap,
+      drinkSizeRows: [defaultDrinkSizeRow()],
     };
   }
 
+  // Bebida
+  const drinkSizeRows: DrinkSizeRow[] = (product.drinkSizes ?? []).map((ds) => ({
+    id: `ds_${Date.now()}_${Math.random()}`,
+    label: ds.label,
+    price: String(ds.price),
+    stock: String(ds.stock),
+  }));
+
   return {
     ...EMPTY_FORM, name: product.name, category: "Bebida",
-    price: String(product.price ?? ""), size: product.size ?? "",
-    tierRows: EMPTY_FORM.tierRows,
-    sizeEnabled: EMPTY_FORM.sizeEnabled,
     hasRelleno: false, ingredientMap,
+    drinkSizeRows: drinkSizeRows.length > 0 ? drinkSizeRows : [defaultDrinkSizeRow()],
   };
 }
 
@@ -368,7 +458,7 @@ function getVariantKeysFromForm(form: ProductForm): Array<{ variantKey: string; 
       if (form.sizeEnabled[sk]) sizes.push({ key: sk, label: FOOD_SIZE_LABELS[sk] });
     });
   } else {
-    sizes.push({ key: "single", label: form.size || "Unidad" });
+    sizes.push({ key: "single", label: "Unidad" });
   }
   if (sizes.length === 0) sizes.push({ key: "single", label: "Unidad" });
 
@@ -403,7 +493,7 @@ function ProductFormFields({
         <input
           type="text" value={form.name}
           onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-          placeholder="ej: Empanada, Hamburguesa…"
+          placeholder="ej: Empanada, Gaseosa…"
           className={inputClass}
         />
       </Field>
@@ -425,6 +515,7 @@ function ProductFormFields({
         </div>
       </Field>
 
+      {/* ── COMIDA ── */}
       {form.category === "Comida" && (
         <>
           <div className="flex flex-col gap-3">
@@ -432,7 +523,6 @@ function ProductFormFields({
               <p className="text-[10px] uppercase tracking-widest text-yellow-700">Tamaños y precios escalonados</p>
               <p className="text-[10px] text-amber-700">
                 Activa los tamaños que apliquen. El primer escalón (×1) es el precio base.
-                Agrega escalones para descuentos por volumen.
               </p>
             </div>
             {FOOD_SIZE_KEYS.map((sk) => (
@@ -450,9 +540,7 @@ function ProductFormFields({
                       }
                       className="w-4 h-4 accent-amber-500 cursor-pointer"
                     />
-                    <span className="text-sm font-bold text-amber-200">
-                      {FOOD_SIZE_LABELS[sk]}
-                    </span>
+                    <span className="text-sm font-bold text-amber-200">{FOOD_SIZE_LABELS[sk]}</span>
                   </label>
                 </div>
                 {form.sizeEnabled[sk] && (
@@ -472,44 +560,144 @@ function ProductFormFields({
               </div>
             ))}
           </div>
+
+          <div className="flex flex-col gap-3 bg-amber-900/30 border border-amber-800 rounded-lg p-3">
+            <p className="text-[10px] uppercase tracking-widest text-yellow-700">Control de stock (ingredientes)</p>
+            <IngredientAssigner
+              variantKeys={variantKeys}
+              ingredientMap={form.ingredientMap}
+              ingredients={ingredients}
+              onChange={(map) => setForm((p) => ({ ...p, ingredientMap: map }))}
+            />
+          </div>
         </>
       )}
 
+      {/* ── BEBIDA ── */}
       {form.category === "Bebida" && (
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Precio ($)" error={errors.price}>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500 text-sm font-bold pointer-events-none">$</span>
-              <input
-                type="number" min={0} step={0.01} value={form.price}
-                onChange={(e) => setForm((p) => ({ ...p, price: e.target.value }))}
-                placeholder="0.00"
-                className={`${inputClass} pl-7 w-full`}
-              />
-            </div>
-          </Field>
-          <Field label="Presentación" error={errors.size}>
-            <input
-              type="text" value={form.size}
-              onChange={(e) => setForm((p) => ({ ...p, size: e.target.value }))}
-              placeholder="ej: 500ml, Taza"
-              className={inputClass}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-0.5">
+            <p className="text-[10px] uppercase tracking-widest text-yellow-700">Presentaciones y stock</p>
+            <p className="text-[10px] text-amber-700">
+              Cada presentación tiene su propio precio y stock independiente.
+            </p>
+          </div>
+
+          <div className="bg-amber-900/20 border border-amber-800/60 rounded-lg p-3">
+            <DrinkSizeEditor
+              rows={form.drinkSizeRows}
+              onChange={(rows) => setForm((p) => ({ ...p, drinkSizeRows: rows }))}
+              errors={errors}
             />
-          </Field>
+          </div>
+
+          {Object.keys(errors).some((k) => k.startsWith("drinkSizes")) && (
+            <p className="text-red-400 text-[10px]">{errors.drinkSizes}</p>
+          )}
         </div>
       )}
-
-      <div className="flex flex-col gap-3 bg-amber-900/30 border border-amber-800 rounded-lg p-3">
-        <p className="text-[10px] uppercase tracking-widest text-yellow-700">Control de stock</p>
-        <IngredientAssigner
-          variantKeys={variantKeys}
-          ingredientMap={form.ingredientMap}
-          ingredients={ingredients}
-          onChange={(map) => setForm((p) => ({ ...p, ingredientMap: map }))}
-        />
-      </div>
     </>
   );
+}
+
+// ── Validation ────────────────────────────────────────────────────────────────
+
+function validate(
+  form: ProductForm,
+  setErrors: React.Dispatch<React.SetStateAction<Record<string, string>>>
+): boolean {
+  const e: Record<string, string> = {};
+  if (!form.name.trim()) e.name = "El nombre es obligatorio.";
+
+  if (form.category === "Comida") {
+    const anySizeEnabled = FOOD_SIZE_KEYS.some((sk) => form.sizeEnabled[sk]);
+    if (!anySizeEnabled) {
+      e.size_grande = "Activa al menos un tamaño.";
+    } else {
+      FOOD_SIZE_KEYS.forEach((sk) => {
+        if (!form.sizeEnabled[sk]) return;
+        const rows = form.tierRows[sk] ?? [];
+        if (rows.length === 0) { e[`size_${sk}`] = "Agrega al menos un escalón."; return; }
+        let anyPositive = false;
+        rows.forEach((row) => {
+          const qty   = Number(row.minQty);
+          const price = Number(row.pricePerUnit);
+          if (row.minQty === "" || isNaN(qty) || qty < 1)
+            e[`${sk}_minQty_${row.id}`] = "Mín. 1.";
+          if (row.pricePerUnit === "" || isNaN(price) || price < 0)
+            e[`${sk}_price_${row.id}`] = "Precio inválido.";
+          else if (price > 0) anyPositive = true;
+        });
+        if (!anyPositive) e[`size_${sk}`] = "Al menos un escalón debe tener precio mayor a $0.";
+      });
+    }
+  } else {
+    // Bebida
+    if (form.drinkSizeRows.length === 0) {
+      e.drinkSizes = "Agrega al menos una presentación.";
+    } else {
+      form.drinkSizeRows.forEach((row) => {
+        if (!row.label.trim()) e[`ds_label_${row.id}`] = "La presentación requiere un nombre.";
+        const price = Number(row.price);
+        if (row.price === "" || isNaN(price) || price < 0) e[`ds_price_${row.id}`] = "Precio inválido.";
+      });
+    }
+  }
+
+  setErrors(e);
+  return Object.keys(e).length === 0;
+}
+
+// ── Form → Product ────────────────────────────────────────────────────────────
+
+function formToProduct(form: ProductForm, id: number): Product {
+  const ingredientMap: Record<string, Record<string, number>> = {};
+  Object.entries(form.ingredientMap).forEach(([vk, usage]) => {
+    const nums: Record<string, number> = {};
+    Object.entries(usage).forEach(([ingId, qty]) => {
+      const n = Math.round(Number(qty) || 0);
+      if (n > 0) nums[ingId] = n;
+    });
+    if (Object.keys(nums).length > 0) ingredientMap[vk] = nums;
+  });
+
+  if (form.category === "Comida") {
+    const tieredPrices: TieredPrices = {};
+    const sizeLabels: Record<string, string> = {};
+    FOOD_SIZE_KEYS.forEach((sk) => {
+      if (!form.sizeEnabled[sk]) return;
+      sizeLabels[sk] = FOOD_SIZE_LABELS[sk];
+      tieredPrices[sk] = (form.tierRows[sk] ?? [])
+        .filter((r) => r.pricePerUnit !== "" && Number(r.pricePerUnit) > 0)
+        .map((r) => ({ minQty: Math.max(1, Number(r.minQty) || 1), pricePerUnit: Number(r.pricePerUnit) }))
+        .sort((a, b) => a.minQty - b.minQty);
+      if (tieredPrices[sk].length > 0 && tieredPrices[sk][0].minQty !== 1) {
+        tieredPrices[sk].unshift({ ...tieredPrices[sk][0], minQty: 1 });
+      }
+    });
+
+    return {
+      id, name: form.name.trim(), category: "Comida",
+      tieredPrices, sizeLabels,
+      fillingLabels: form.hasRelleno ? { carne: "Carne", pollo: "Pollo" } : {},
+      ingredientMap,
+    };
+  }
+
+  // Bebida
+  const drinkSizes: DrinkSize[] = form.drinkSizeRows.map((row) => ({
+    key: row.label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "") || `size_${row.id}`,
+    label: row.label.trim(),
+    price: Math.max(0, Number(row.price) || 0),
+    stock: Math.max(0, Math.round(Number(row.stock) || 0)),
+  }));
+
+  return {
+    id, name: form.name.trim(), category: "Bebida",
+    tieredPrices: {}, sizeLabels: {}, fillingLabels: {},
+    ingredientMap,
+    drinkSizes,
+  };
 }
 
 // ── Main Inventario ───────────────────────────────────────────────────────────
@@ -546,89 +734,6 @@ export default function Inventario({
   const [ingEditStock,     setIngEditStock]     = useState("0");
   const [ingDeleteTarget,  setIngDeleteTarget]  = useState<Ingredient | null>(null);
   const [ingDeleteConfirm, setIngDeleteConfirm] = useState("");
-
-  // ── Validation ──────────────────────────────────────────────────────────────
-
-  const validate = (form: ProductForm, setErrors: React.Dispatch<React.SetStateAction<Record<string, string>>>): boolean => {
-    const e: Record<string, string> = {};
-    if (!form.name.trim()) e.name = "El nombre es obligatorio.";
-
-    if (form.category === "Comida") {
-      const anySizeEnabled = FOOD_SIZE_KEYS.some((sk) => form.sizeEnabled[sk]);
-      if (!anySizeEnabled) {
-        e.size_grande = "Activa al menos un tamaño.";
-      } else {
-        FOOD_SIZE_KEYS.forEach((sk) => {
-          if (!form.sizeEnabled[sk]) return;
-          const rows = form.tierRows[sk] ?? [];
-          if (rows.length === 0) { e[`size_${sk}`] = "Agrega al menos un escalón."; return; }
-          let anyPositive = false;
-          rows.forEach((row, idx) => {
-            const qty   = Number(row.minQty);
-            const price = Number(row.pricePerUnit);
-            if (row.minQty === "" || isNaN(qty) || qty < 1)
-              e[`${sk}_minQty_${row.id}`] = "Mín. 1.";
-            if (row.pricePerUnit === "" || isNaN(price) || price < 0)
-              e[`${sk}_price_${row.id}`] = "Precio inválido.";
-            else if (price > 0) anyPositive = true;
-          });
-          if (!anyPositive) e[`size_${sk}`] = "Al menos un escalón debe tener precio mayor a $0.";
-        });
-      }
-    } else {
-      if (form.price === "" || isNaN(Number(form.price)) || Number(form.price) < 0)
-        e.price = "Precio inválido.";
-      if (!form.size.trim()) e.size = "La presentación es obligatoria.";
-    }
-
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  };
-
-  // ── Form → Product ──────────────────────────────────────────────────────────
-
-  const formToProduct = (form: ProductForm, id: number): Product => {
-    const ingredientMap: Record<string, Record<string, number>> = {};
-    Object.entries(form.ingredientMap).forEach(([vk, usage]) => {
-      const nums: Record<string, number> = {};
-      Object.entries(usage).forEach(([ingId, qty]) => {
-        const n = Math.round(Number(qty) || 0);
-        if (n > 0) nums[ingId] = n;
-      });
-      if (Object.keys(nums).length > 0) ingredientMap[vk] = nums;
-    });
-
-    if (form.category === "Comida") {
-      const tieredPrices: TieredPrices = {};
-      const sizeLabels: Record<string, string> = {};
-      FOOD_SIZE_KEYS.forEach((sk) => {
-        if (!form.sizeEnabled[sk]) return;
-        sizeLabels[sk] = FOOD_SIZE_LABELS[sk];
-        tieredPrices[sk] = (form.tierRows[sk] ?? [])
-          .filter((r) => r.pricePerUnit !== "" && Number(r.pricePerUnit) > 0)
-          .map((r) => ({ minQty: Math.max(1, Number(r.minQty) || 1), pricePerUnit: Number(r.pricePerUnit) }))
-          .sort((a, b) => a.minQty - b.minQty);
-        if (tieredPrices[sk].length > 0 && tieredPrices[sk][0].minQty !== 1) {
-          tieredPrices[sk].unshift({ ...tieredPrices[sk][0], minQty: 1 });
-        }
-      });
-
-      return {
-        id, name: form.name.trim(), category: "Comida",
-        tieredPrices, sizeLabels,
-        fillingLabels: form.hasRelleno ? { carne: "Carne", pollo: "Pollo" } : {},
-        ingredientMap,
-      };
-    }
-
-    return {
-      id, name: form.name.trim(), category: "Bebida",
-      tieredPrices: {}, sizeLabels: {},
-      fillingLabels: {},
-      price: Number(form.price), size: form.size.trim(),
-      ingredientMap,
-    };
-  };
 
   const handleAdd = () => {
     if (!validate(addForm, setAddErrors)) return;
@@ -736,28 +841,49 @@ export default function Inventario({
                 No hay productos. Agrega uno con el botón de arriba.
               </div>
             ) : products.map((product) => {
+              // ── Product card in list ──────────────────────────────────────
+              const isBebida = product.category === "Bebida";
+
+              // Stock status for food (ingredient-based)
               const variants = getVariantKeys(product);
               const assignedIngIds = new Set(
                 Object.values(product.ingredientMap ?? {}).flatMap((u) => Object.keys(u))
               );
-              const assignedIngs = ingredients.filter((i) => assignedIngIds.has(i.id));
+              const assignedIngs  = ingredients.filter((i) => assignedIngIds.has(i.id));
               const hasLowStock   = assignedIngs.some((i) => i.stock > 0 && i.stock <= 5);
               const hasOutOfStock = assignedIngs.some((i) => i.stock === 0);
 
+              // Stock status for drinks (drinkSize-based)
+              const drinkSizesWithStock = (product.drinkSizes ?? []).filter((ds) => ds.stock > 0);
+              const drinkHasLow    = (product.drinkSizes ?? []).some((ds) => ds.stock > 0 && ds.stock <= 5);
+              const drinkHasOut    = (product.drinkSizes ?? []).some((ds) => ds.stock === 0 && drinkSizesWithStock.length > 0);
+              const drinkAllUntk   = (product.drinkSizes ?? []).every((ds) => ds.stock === 0);
+
               return (
                 <div key={product.id} className="flex flex-col bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4">
-                  <div className="relative flex gap-2 justify-between mb-2">
+                  <div className="relative flex gap-2 justify-between mb-4">
                     <div className="flex items-center gap-2 flex-wrap max-w-[70%]">
                       <h2 className="font-bold text-sm">{product.name}</h2>
                       <span className="text-[10px] font-bold uppercase text-amber-700 bg-amber-900/60 border border-amber-800 rounded-full px-2 py-0.5">
                         {product.category}
                       </span>
-                      {assignedIngs.length > 0 && (
-                        hasOutOfStock
-                          ? <span className="text-[9px] font-bold uppercase text-red-400 bg-red-900/40 border border-red-800 rounded-full px-2 py-0.5">⚠ Sin stock</span>
-                          : hasLowStock
-                          ? <span className="text-[9px] font-bold uppercase text-orange-400 bg-orange-900/30 border border-orange-800 rounded-full px-2 py-0.5">↓ Stock bajo</span>
-                          : <span className="text-[9px] font-bold uppercase text-green-500 bg-green-900/20 border border-green-900 rounded-full px-2 py-0.5">✓ Con stock</span>
+                      {/* Stock badge */}
+                      {isBebida ? (
+                        drinkAllUntk ? null : (
+                          drinkHasOut
+                            ? <span className="text-[9px] font-bold uppercase text-red-400 bg-red-900/40 border border-red-800 rounded-full px-2 py-0.5">⚠ Sin stock</span>
+                            : drinkHasLow
+                            ? <span className="text-[9px] font-bold uppercase text-orange-400 bg-orange-900/30 border border-orange-800 rounded-full px-2 py-0.5">↓ Stock bajo</span>
+                            : <span className="text-[9px] font-bold uppercase text-green-500 bg-green-900/20 border border-green-900 rounded-full px-2 py-0.5">✓ Con stock</span>
+                        )
+                      ) : (
+                        assignedIngs.length > 0 && (
+                          hasOutOfStock
+                            ? <span className="text-[9px] font-bold uppercase text-red-400 bg-red-900/40 border border-red-800 rounded-full px-2 py-0.5">⚠ Sin stock</span>
+                            : hasLowStock
+                            ? <span className="text-[9px] font-bold uppercase text-orange-400 bg-orange-900/30 border border-orange-800 rounded-full px-2 py-0.5">↓ Stock bajo</span>
+                            : <span className="text-[9px] font-bold uppercase text-green-500 bg-green-900/20 border border-green-900 rounded-full px-2 py-0.5">✓ Con stock</span>
+                        )
                       )}
                     </div>
                     <div className="absolute top-0 right-0 flex gap-2">
@@ -773,8 +899,22 @@ export default function Inventario({
                     </div>
                   </div>
 
-                  {/* Price summary */}
-                  {product.category === "Comida" ? (
+                  {/* Price / size summary */}
+                  {isBebida ? (
+                    /* Drink: show drinkSizes table */
+                    <div className="flex flex-col gap-1.5">
+                      {(product.drinkSizes ?? []).map((ds) => (
+                        <div key={ds.key} className="flex items-center gap-3">
+                          <span className="text-xs text-amber-300 font-semibold min-w-16">{ds.label}</span>
+                          <span className="text-xs font-bold text-amber-500">${ds.price.toFixed(2)}</span>
+                          <span className={`text-xs font-bold tabular-nums ml-auto ${stockColor(ds.stock)}`}>
+                            {ds.stock === 0 ? "" : `stock: ${ds.stock}`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    /* Food: show tiered prices */
                     <div className="flex flex-col gap-2">
                       {Object.entries(product.sizeLabels).map(([sk, sl]) => {
                         const tiers = product.tieredPrices[sk] ?? [];
@@ -798,44 +938,39 @@ export default function Inventario({
                           {Object.values(product.fillingLabels).join(" · ")}
                         </p>
                       )}
-                    </div>
-                  ) : (
-                    <div className="flex gap-1.5 items-baseline">
-                      <span className="text-[10px] text-yellow-700 uppercase">{product.size}</span>
-                      <span className="font-bold text-amber-500">${(product.price ?? 0).toFixed(2)}</span>
-                    </div>
-                  )}
 
-                  {/* Ingredient summary */}
-                  {variants.some((v) => Object.keys(product.ingredientMap?.[v.variantKey] ?? {}).length > 0) && (
-                    <div className="mt-3 pt-3 border-t border-amber-800/60 flex flex-col gap-2">
-                      <p className="text-[10px] uppercase tracking-widest text-yellow-700">Ingredientes</p>
-                      <div className="flex flex-col gap-1.5">
-                        {variants.map(({ variantKey, label }) => {
-                          const usage = product.ingredientMap?.[variantKey] ?? {};
-                          if (Object.keys(usage).length === 0) return null;
-                          return (
-                            <div key={variantKey} className="flex items-start gap-2">
-                              <span className="text-[10px] text-amber-700 uppercase min-w-24 pt-0.5 shrink-0">{label}</span>
-                              <div className="flex flex-wrap gap-1.5">
-                                {Object.entries(usage).map(([ingId, qty]) => {
-                                  const ing = ingredients.find((i) => i.id === ingId);
-                                  if (!ing) return null;
-                                  return (
-                                    <span key={ingId} className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                                      ing.stock === 0   ? "border-red-800 text-red-400 bg-red-900/20"
-                                      : ing.stock <= 5  ? "border-orange-800 text-orange-400 bg-orange-900/20"
-                                      : "border-green-900 text-green-500 bg-green-900/10"
-                                    }`}>
-                                      {ing.name} ×{qty} <span className="opacity-60">({ing.stock})</span>
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      {/* Food ingredient summary */}
+                      {variants.some((v) => Object.keys(product.ingredientMap?.[v.variantKey] ?? {}).length > 0) && (
+                        <div className="mt-3 pt-3 border-t border-amber-800/60 flex flex-col gap-2">
+                          <p className="text-[10px] uppercase tracking-widest text-yellow-700">Ingredientes</p>
+                          <div className="flex flex-col gap-1.5">
+                            {variants.map(({ variantKey, label }) => {
+                              const usage = product.ingredientMap?.[variantKey] ?? {};
+                              if (Object.keys(usage).length === 0) return null;
+                              return (
+                                <div key={variantKey} className="flex items-start gap-2">
+                                  <span className="text-[10px] text-amber-700 uppercase min-w-24 pt-0.5 shrink-0">{label}</span>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {Object.entries(usage).map(([ingId, qty]) => {
+                                      const ing = ingredients.find((i) => i.id === ingId);
+                                      if (!ing) return null;
+                                      return (
+                                        <span key={ingId} className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                          ing.stock === 0   ? "border-red-800 text-red-400 bg-red-900/20"
+                                          : ing.stock <= 5  ? "border-orange-800 text-orange-400 bg-orange-900/20"
+                                          : "border-green-900 text-green-500 bg-green-900/10"
+                                        }`}>
+                                          {ing.name} ×{qty} <span className="opacity-60">({ing.stock})</span>
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
