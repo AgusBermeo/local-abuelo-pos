@@ -11,7 +11,7 @@ import {
   IngredientDeduction,
   DrinkDeduction,
   PaymentMethod,
-} from "../page";
+} from "../home-client";
 
 // One entry in the cart.
 // For food: sizeKey / fillingKey as before.

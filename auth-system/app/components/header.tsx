@@ -9,9 +9,9 @@
 
 import Image from "next/image";
 import { useTransition } from "react";
-import { logoutAction } from "../../lib/auth/actions";
-import type { SessionPayload } from "../../lib/auth/session";
-import type { UserRole } from "../../lib/data/users";
+import { logoutAction } from "../../../lib/auth/actions";
+import type { SessionPayload } from "../../../lib/auth/session";
+import type { UserRole } from "../../../lib/data/users";
 
 const ROLE_LABELS: Record<UserRole, string> = {
   superadmin: "Superadmin",

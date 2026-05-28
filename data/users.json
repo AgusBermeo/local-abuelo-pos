@@ -1,0 +1,12 @@
+[
+  {
+    "id": "superadmin-seed",
+    "username": "abuelo",
+    "passwordHash": "$2b$10$dZk5y6e1sDa2jE7xUK0BKeyBCVSi6Clv4Ifg9qIe49ZKoyExexIUm",
+    "displayName": "Abuelo",
+    "role": "superadmin",
+    "active": true,
+    "createdAt": "2026-05-28T17:36:41.036Z",
+    "createdBy": null
+  }
+]

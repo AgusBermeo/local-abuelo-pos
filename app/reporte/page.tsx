@@ -826,7 +826,7 @@ export default function ReportePage() {
 
   return (
     <div className="flex flex-col min-h-dvh bg-amber-950/60 font-sans">
-      <Header />
+      <Header session={null} />
 
       <div className="px-5 pt-4">
         <button onClick={() => window.history.back()}
