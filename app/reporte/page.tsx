@@ -33,7 +33,8 @@ function toLocalDateStr(date: Date | string): string {
 
 type Period = "today" | "yesterday" | "week" | "month" | "all";
 
-function getPeriodSales(sales: Sale[], period: Period): Sale[] {
+// selectedMonth: "YYYY-MM" string, only used when period === "month"
+function getPeriodSales(sales: Sale[], period: Period, selectedMonth?: string): Sale[] {
   const now = new Date();
   return sales.filter((s) => {
     const d = new Date(s.date);
@@ -42,15 +43,21 @@ function getPeriodSales(sales: Sale[], period: Period): Sale[] {
     if (period === "week") {
       const w = new Date(now);
       w.setDate(now.getDate() - 6);
-      w.setHours(0, 0, 0, 0);  // ← inicio del día
+      w.setHours(0, 0, 0, 0);
       return d >= w;
     }
-    if (period === "month")     return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    if (period === "month") {
+      if (selectedMonth) {
+        const [y, m] = selectedMonth.split("-").map(Number);
+        return d.getFullYear() === y && d.getMonth() === m - 1;
+      }
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    }
     return true;
   });
 }
 
-function getPrevPeriodSales(sales: Sale[], period: Period): Sale[] {
+function getPrevPeriodSales(sales: Sale[], period: Period, selectedMonth?: string): Sale[] {
   const now = new Date();
   return sales.filter((s) => {
     const d = new Date(s.date);
@@ -68,7 +75,17 @@ function getPrevPeriodSales(sales: Sale[], period: Period): Sale[] {
       return d >= start && d <= end;
     }
     if (period === "month") {
-      const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      let year: number;
+      let month: number; // 0-indexed
+      if (selectedMonth) {
+        const [y, m] = selectedMonth.split("-").map(Number);
+        year = y;
+        month = m - 1;
+      } else {
+        year = now.getFullYear();
+        month = now.getMonth();
+      }
+      const prev = new Date(year, month - 1, 1);
       return d.getFullYear() === prev.getFullYear() && d.getMonth() === prev.getMonth();
     }
     return false;
@@ -86,6 +103,21 @@ function lastNDays(n: number, endOffset = 0): string[] {
     const d = new Date(); d.setDate(d.getDate() - endOffset - (n - 1 - i));
     return toLocalDateStr(d);
   });
+}
+
+/** Returns all "YYYY-MM" months that appear in sales, sorted descending */
+function getAvailableMonths(sales: Sale[]): string[] {
+  const set = new Set<string>();
+  for (const s of sales) {
+    const d = new Date(s.date);
+    set.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  return Array.from(set).sort((a, b) => b.localeCompare(a));
+}
+
+function monthLabel(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("es-EC", { month: "long", year: "numeric" });
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -121,8 +153,20 @@ function StatCard({
 }
 
 // ── Bar chart ─────────────────────────────────────────────────────────────────
-function DailyBarChart({ sales, days, endOffset = 0 }: { sales: Sale[]; days: number; endOffset?: number }) {
-  const dates = lastNDays(days, endOffset);
+function DailyBarChart({ sales, days, endOffset = 0, monthYM }: { sales: Sale[]; days: number; endOffset?: number; monthYM?: string }) {
+  // If monthYM provided, generate all days in that month instead of last N days
+  let dates: string[];
+  if (monthYM) {
+    const [y, m] = monthYM.split("-").map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    dates = Array.from({ length: daysInMonth }, (_, i) => {
+      const day = String(i + 1).padStart(2, "0");
+      return `${y}-${String(m).padStart(2, "0")}-${day}`;
+    });
+  } else {
+    dates = lastNDays(days, endOffset);
+  }
+
   const byDate: Record<string, { revenue: number; count: number }> = {};
   dates.forEach((d) => { byDate[d] = { revenue: 0, count: 0 }; });
   sales.forEach((s) => {
@@ -132,16 +176,16 @@ function DailyBarChart({ sales, days, endOffset = 0 }: { sales: Sale[]; days: nu
 
   const maxRev = Math.max(...Object.values(byDate).map((v) => v.revenue), 1);
   const dayNames = ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sá"];
-  const activeDate = toLocalDateStr((() => { const d = new Date(); d.setDate(d.getDate() - endOffset); return d; })());
+  const todayStr = toLocalDateStr(new Date());
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-end gap-1 h-28">
+      <div className="flex items-end gap-0.5 h-28">
         {dates.map((date) => {
           const { revenue, count } = byDate[date];
           const heightPct = (revenue / maxRev) * 100;
           const d = new Date(date + "T12:00:00");
-          const isActive = date === activeDate;
+          const isToday = date === todayStr;
           return (
             <div key={date} className="flex-1 flex flex-col items-center gap-1 group relative">
               <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-amber-900 border border-amber-600 rounded-lg px-2 py-1 text-[10px] text-amber-200 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
@@ -150,13 +194,19 @@ function DailyBarChart({ sales, days, endOffset = 0 }: { sales: Sale[]; days: nu
               </div>
               <div className="w-full flex items-end" style={{ height: "100px" }}>
                 <div
-                  className={`w-full rounded-t-sm transition-all duration-500 ${isActive ? "bg-amber-400" : "bg-amber-700 group-hover:bg-amber-500"}`}
+                  className={`w-full rounded-t-sm transition-all duration-500 ${isToday ? "bg-amber-400" : "bg-amber-700 group-hover:bg-amber-500"}`}
                   style={{ height: `${Math.max(heightPct, revenue > 0 ? 4 : 0)}%` }}
                 />
               </div>
-              <span className={`text-[9px] uppercase font-bold ${isActive ? "text-amber-400" : "text-amber-700"}`}>
-                {dayNames[d.getDay()]}
-              </span>
+              {/* Only show day label if not too many bars */}
+              {dates.length <= 14 && (
+                <span className={`text-[9px] uppercase font-bold ${isToday ? "text-amber-400" : "text-amber-700"}`}>
+                  {dayNames[d.getDay()]}
+                </span>
+              )}
+              {dates.length > 14 && (d.getDate() === 1 || d.getDate() % 5 === 0) && (
+                <span className="text-[8px] text-amber-800">{d.getDate()}</span>
+              )}
             </div>
           );
         })}
@@ -711,8 +761,21 @@ export default function ReportePage() {
   const [ingredients] = useLocalStorage<Ingredient[]>("abuelo-ingredients", []);
   const [period, setPeriod] = useState<Period>("week");
 
-  const periodSales = getPeriodSales(sales, period);
-  const prevSales   = getPrevPeriodSales(sales, period);
+  // Current month as default: "YYYY-MM"
+  const nowYM = (() => {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}`;
+  })();
+  const [selectedMonth, setSelectedMonth] = useState<string>(nowYM);
+
+  const availableMonths = getAvailableMonths(sales);
+  // Ensure current month is always in the list even if no sales yet
+  const monthOptions = availableMonths.includes(nowYM)
+    ? availableMonths
+    : [nowYM, ...availableMonths];
+
+  const periodSales = getPeriodSales(sales, period, selectedMonth);
+  const prevSales   = getPrevPeriodSales(sales, period, selectedMonth);
 
   const total       = periodSales.reduce((s, x) => s + x.total, 0);
   const prevTotal   = prevSales.reduce((s, x) => s + x.total, 0);
@@ -734,6 +797,7 @@ export default function ReportePage() {
       productTotals[item.name].revenue  += item.price * item.quantity;
     }
 
+  // Chart config
   const chartDays      = period === "today" || period === "yesterday" ? 1 : period === "week" ? 7 : period === "month" ? 30 : 14;
   const chartEndOffset = period === "yesterday" ? 1 : 0;
 
@@ -745,11 +809,18 @@ export default function ReportePage() {
     { key: "all",       label: "Total"  },
   ];
 
+  // Prev month label for "comparativa" title
+  const prevMonthLabel = (() => {
+    const [y, m] = selectedMonth.split("-").map(Number);
+    const prev = new Date(y, m - 2, 1); // m-2 because month is 1-indexed and we want previous
+    return prev.toLocaleDateString("es-EC", { month: "long", year: "numeric" });
+  })();
+
   const prevLabel: Record<Period, string> = {
     today:     "ayer",
     yesterday: "anteayer",
     week:      "semana pasada",
-    month:     "mes pasado",
+    month:     prevMonthLabel,
     all:       "—",
   };
 
@@ -781,6 +852,28 @@ export default function ReportePage() {
           ))}
         </div>
 
+        {/* Month picker — only shown when period === "month" */}
+        {period === "month" && (
+          <div className="flex flex-col gap-2">
+            <p className="text-[10px] uppercase tracking-widest text-yellow-700">Seleccionar mes</p>
+            <div className="flex flex-wrap gap-2">
+              {monthOptions.map((ym) => (
+                <button
+                  key={ym}
+                  onClick={() => setSelectedMonth(ym)}
+                  className={`px-4 py-2 rounded-xl border-2 text-xs font-bold uppercase tracking-widest cursor-pointer transition-all capitalize ${
+                    selectedMonth === ym
+                      ? "border-amber-500 bg-amber-500 text-amber-950"
+                      : "border-amber-800 text-amber-600 hover:border-amber-600 hover:text-amber-400 bg-amber-900/20"
+                  }`}
+                >
+                  {monthLabel(ym)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* KPI cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard label="Ventas"       value={String(periodSales.length)} accent="amber"  delta={delta(periodSales.length, prevSales.length)} />
@@ -793,7 +886,12 @@ export default function ReportePage() {
         <SectionCard title="📈 Ventas por día">
           {periodSales.length === 0
             ? <p className="text-amber-700 text-sm">Sin datos para este período.</p>
-            : <DailyBarChart sales={periodSales} days={chartDays} endOffset={chartEndOffset} />
+            : <DailyBarChart
+                sales={periodSales}
+                days={chartDays}
+                endOffset={chartEndOffset}
+                monthYM={period === "month" ? selectedMonth : undefined}
+              />
           }
         </SectionCard>
 
