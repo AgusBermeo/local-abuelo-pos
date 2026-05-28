@@ -129,8 +129,6 @@ const INITIAL_PRODUCTS: Product[] = [
     tieredPrices: {}, sizeLabels: {}, fillingLabels: {}, ingredientMap: {},
     drinkSizes: [
       { key: "500ml", label: "500ml", price: 1.50, stock: 0 },
-      { key: "1l",    label: "1L",    price: 2.50, stock: 0 },
-      { key: "2l",    label: "2L",    price: 4.00, stock: 0 },
     ],
   },
   {
