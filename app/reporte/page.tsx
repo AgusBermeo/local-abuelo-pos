@@ -39,7 +39,12 @@ function getPeriodSales(sales: Sale[], period: Period): Sale[] {
     const d = new Date(s.date);
     if (period === "today")     return toLocalDateStr(d) === toLocalDateStr(now);
     if (period === "yesterday") { const y = new Date(now); y.setDate(now.getDate() - 1); return toLocalDateStr(d) === toLocalDateStr(y); }
-    if (period === "week")      { const w = new Date(now); w.setDate(now.getDate() - 6); return d >= w; }
+    if (period === "week") {
+      const w = new Date(now);
+      w.setDate(now.getDate() - 6);
+      w.setHours(0, 0, 0, 0);  // ← inicio del día
+      return d >= w;
+    }
     if (period === "month")     return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
     return true;
   });
@@ -58,8 +63,8 @@ function getPrevPeriodSales(sales: Sale[], period: Period): Sale[] {
       return toLocalDateStr(d) === toLocalDateStr(y2);
     }
     if (period === "week") {
-      const end = new Date(now); end.setDate(now.getDate() - 7);
-      const start = new Date(now); start.setDate(now.getDate() - 13);
+      const end = new Date(now); end.setDate(now.getDate() - 7); end.setHours(23, 59, 59, 999);
+      const start = new Date(now); start.setDate(now.getDate() - 13); start.setHours(0, 0, 0, 0);
       return d >= start && d <= end;
     }
     if (period === "month") {
