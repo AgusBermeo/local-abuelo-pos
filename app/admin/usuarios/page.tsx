@@ -437,7 +437,7 @@ export default function AdminUsuariosPage() {
             </svg>
           </button>
           <div>
-            <h1 className="text-sm font-bold text-amber-400 uppercase tracking-widest">Gestión de usuarios</h1>
+            <h2 className="text-sm font-bold text-amber-400 uppercase tracking-widest">Gestión de usuarios</h2>
             <p className="text-[10px] text-amber-800 uppercase tracking-widest">El Local del Abuelo</p>
           </div>
         </div>

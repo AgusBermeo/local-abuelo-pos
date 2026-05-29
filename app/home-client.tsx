@@ -173,6 +173,11 @@ export default function HomeClient({ session }: { session: SessionPayload | null
 
   const deliveredRef = useRef<Set<number>>(new Set());
 
+  // ── Rol del usuario actual ────────────────────────────────────────────────
+  const userRole = session?.role ?? "cajero";
+  const canManageSales = userRole === "superadmin" || userRole === "admin";
+  const canManageInventory = userRole === "superadmin" || userRole === "admin";
+
   const normalizedProducts = products.map((product) => ({
     ...normalizeDrinkSizes({
       ...product,
@@ -346,10 +351,11 @@ export default function HomeClient({ session }: { session: SessionPayload | null
       content: (
         <Ventas
           sales={sales}
-          onDelete={deleteSale}
+          onDelete={canManageSales ? deleteSale : undefined}
           onMarkDelivered={markDelivered}
           onUnmarkDelivered={unmarkDelivered}
-          onEdit={editSale}
+          onEdit={canManageSales ? editSale : undefined}
+          readOnly={!canManageSales}
         />
       ),
     },
@@ -359,12 +365,13 @@ export default function HomeClient({ session }: { session: SessionPayload | null
         <Inventario
           products={normalizedProducts}
           ingredients={ingredients}
-          onAddProduct={addProduct}
-          onDeleteProduct={deleteProduct}
-          onEditProduct={editProduct}
-          onAddIngredient={addIngredient}
-          onEditIngredient={editIngredient}
-          onDeleteIngredient={deleteIngredient}
+          onAddProduct={canManageInventory ? addProduct : undefined}
+          onDeleteProduct={canManageInventory ? deleteProduct : undefined}
+          onEditProduct={canManageInventory ? editProduct : undefined}
+          onAddIngredient={canManageInventory ? addIngredient : undefined}
+          onEditIngredient={canManageInventory ? editIngredient : undefined}
+          onDeleteIngredient={canManageInventory ? deleteIngredient : undefined}
+          readOnly={!canManageInventory}
         />
       ),
     },

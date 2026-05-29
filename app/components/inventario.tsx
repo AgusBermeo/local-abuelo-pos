@@ -193,7 +193,6 @@ function DrinkSizeEditor({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Header */}
       <div className="grid grid-cols-[1fr_auto_auto_2rem] gap-2 text-[9px] uppercase tracking-widest text-yellow-700 px-1">
         <span>Presentación</span>
         <span className="w-24">Precio ($)</span>
@@ -206,7 +205,6 @@ function DrinkSizeEditor({
         const hasStock = row.stock !== "" && !isNaN(stockNum);
         return (
           <div key={row.id} className="grid grid-cols-[1fr_auto_auto_2rem] gap-2 items-start">
-            {/* Label */}
             <div className="flex flex-col gap-1">
               <input
                 type="text"
@@ -220,7 +218,6 @@ function DrinkSizeEditor({
               )}
             </div>
 
-            {/* Price */}
             <div className="flex flex-col gap-1 w-24">
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500 text-sm font-bold pointer-events-none">$</span>
@@ -237,7 +234,6 @@ function DrinkSizeEditor({
               )}
             </div>
 
-            {/* Stock */}
             <div className="flex flex-col gap-1 w-20">
               <input
                 type="number" min={0} step={1}
@@ -250,7 +246,6 @@ function DrinkSizeEditor({
               />
             </div>
 
-            {/* Remove */}
             <button
               onClick={() => removeRow(row.id)}
               disabled={rows.length <= 1}
@@ -373,14 +368,12 @@ function IngredientAssigner({
 type ProductForm = {
   name: string;
   category: "Comida" | "Bebida";
-  // Comida
   price: string;
   size: string;
   tierRows: Record<string, TierRow[]>;
   sizeEnabled: Record<string, boolean>;
   hasRelleno: boolean;
   ingredientMap: Record<string, Record<string, string>>;
-  // Bebida
   drinkSizeRows: DrinkSizeRow[];
 };
 
@@ -436,7 +429,6 @@ function productToForm(product: Product): ProductForm {
     };
   }
 
-  // Bebida
   const drinkSizeRows: DrinkSizeRow[] = (product.drinkSizes ?? []).map((ds) => ({
     id: `ds_${Date.now()}_${Math.random()}`,
     label: ds.label,
@@ -515,7 +507,6 @@ function ProductFormFields({
         </div>
       </Field>
 
-      {/* ── COMIDA ── */}
       {form.category === "Comida" && (
         <>
           <div className="flex flex-col gap-3">
@@ -573,7 +564,6 @@ function ProductFormFields({
         </>
       )}
 
-      {/* ── BEBIDA ── */}
       {form.category === "Bebida" && (
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-0.5">
@@ -632,7 +622,6 @@ function validate(
       });
     }
   } else {
-    // Bebida
     if (form.drinkSizeRows.length === 0) {
       e.drinkSizes = "Agrega al menos una presentación.";
     } else {
@@ -684,7 +673,6 @@ function formToProduct(form: ProductForm, id: number): Product {
     };
   }
 
-  // Bebida
   const drinkSizes: DrinkSize[] = form.drinkSizeRows.map((row) => ({
     key: row.label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "") || `size_${row.id}`,
     label: row.label.trim(),
@@ -706,14 +694,16 @@ export default function Inventario({
   products, ingredients,
   onAddProduct, onDeleteProduct, onEditProduct,
   onAddIngredient, onEditIngredient, onDeleteIngredient,
+  readOnly = false,
 }: {
   products: Product[]; ingredients: Ingredient[];
-  onAddProduct: (p: Product) => void;
-  onDeleteProduct: (id: number) => void;
-  onEditProduct: (p: Product) => void;
-  onAddIngredient: (i: Ingredient) => void;
-  onEditIngredient: (i: Ingredient) => void;
-  onDeleteIngredient: (id: string) => void;
+  onAddProduct?: (p: Product) => void;
+  onDeleteProduct?: (id: number) => void;
+  onEditProduct?: (p: Product) => void;
+  onAddIngredient?: (i: Ingredient) => void;
+  onEditIngredient?: (i: Ingredient) => void;
+  onDeleteIngredient?: (id: string) => void;
+  readOnly?: boolean;
 }) {
   const [section, setSection] = useState<"ingredientes" | "productos">("productos");
 
@@ -736,23 +726,23 @@ export default function Inventario({
   const [ingDeleteConfirm, setIngDeleteConfirm] = useState("");
 
   const handleAdd = () => {
-    if (!validate(addForm, setAddErrors)) return;
+    if (!onAddProduct || !validate(addForm, setAddErrors)) return;
     onAddProduct(formToProduct(addForm, Date.now()));
     setShowAddModal(false); setAddForm(EMPTY_FORM); setAddErrors({});
   };
   const handleEdit = () => {
-    if (!editTarget || !validate(editForm, setEditErrors)) return;
+    if (!editTarget || !onEditProduct || !validate(editForm, setEditErrors)) return;
     onEditProduct(formToProduct(editForm, editTarget.id));
     setEditTarget(null); setEditForm(EMPTY_FORM); setEditErrors({});
   };
 
   const handleAddIngredient = () => {
-    if (!ingName.trim()) return;
+    if (!ingName.trim() || !onAddIngredient) return;
     onAddIngredient({ id: `ing_${Date.now()}`, name: ingName.trim(), stock: Math.max(0, Math.round(Number(ingStock) || 0)) });
     setShowIngModal(false); setIngName(""); setIngStock("0");
   };
   const handleEditIngredient = () => {
-    if (!ingEditTarget) return;
+    if (!ingEditTarget || !onEditIngredient) return;
     onEditIngredient({ ...ingEditTarget, name: ingEditName.trim(), stock: Math.max(0, Math.round(Number(ingEditStock) || 0)) });
     setIngEditTarget(null);
   };
@@ -761,6 +751,16 @@ export default function Inventario({
 
   return (
     <div className="w-full flex flex-col max-w-4xl mx-auto gap-4">
+      {/* Aviso de modo solo lectura */}
+      {readOnly && (
+        <div className="flex items-center gap-3 bg-amber-900/20 border border-amber-800 rounded-lg px-4 py-3">
+          <span className="text-base leading-none">👁️</span>
+          <p className="text-xs text-amber-700 uppercase tracking-widest font-bold">
+            Modo solo lectura — no puedes modificar el inventario
+          </p>
+        </div>
+      )}
+
       {/* Section switcher */}
       <div className="flex bg-amber-900/40 border-2 border-amber-800 rounded-xl p-1 gap-1">
         {([["productos", "🍽️ Productos"], ["ingredientes", "🧂 Ingredientes"]] as const).map(([key, label]) => (
@@ -778,20 +778,28 @@ export default function Inventario({
         <div className="flex flex-col gap-3">
           <div className="flex justify-between items-center">
             <p className="text-yellow-700 text-xs">Stock global compartido entre todos los productos</p>
-            <button onClick={() => { setIngName(""); setIngStock("0"); setShowIngModal(true); }}
-              className="bg-amber-500 hover:bg-amber-400 text-amber-950 text-xs font-bold py-2 px-4 rounded-md cursor-pointer uppercase transition-colors">
-              + Nuevo ingrediente
-            </button>
+            {!readOnly && onAddIngredient && (
+              <button onClick={() => { setIngName(""); setIngStock("0"); setShowIngModal(true); }}
+                className="bg-amber-500 hover:bg-amber-400 text-amber-950 text-xs font-bold py-2 px-4 rounded-md cursor-pointer uppercase transition-colors">
+                + Nuevo ingrediente
+              </button>
+            )}
           </div>
           {ingredients.length === 0 ? (
             <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-8 flex flex-col items-center gap-3 text-center">
               <span className="text-4xl">🧂</span>
               <p className="text-amber-600 text-sm font-semibold">Sin ingredientes</p>
-              <p className="text-amber-800 text-xs max-w-xs">Crea ingredientes como "Masa Grande", "Carne"… Luego asígnalos a cada variante de producto.</p>
-              <button onClick={() => { setIngName(""); setIngStock("0"); setShowIngModal(true); }}
-                className="mt-2 bg-amber-700 hover:bg-amber-600 text-amber-100 text-xs font-bold py-2 px-5 rounded-lg cursor-pointer uppercase transition-colors">
-                Crear primer ingrediente
-              </button>
+              <p className="text-amber-800 text-xs max-w-xs">
+                {readOnly
+                  ? "No hay ingredientes registrados."
+                  : 'Crea ingredientes como "Masa Grande", "Carne"… Luego asígnalos a cada variante de producto.'}
+              </p>
+              {!readOnly && onAddIngredient && (
+                <button onClick={() => { setIngName(""); setIngStock("0"); setShowIngModal(true); }}
+                  className="mt-2 bg-amber-700 hover:bg-amber-600 text-amber-100 text-xs font-bold py-2 px-5 rounded-lg cursor-pointer uppercase transition-colors">
+                  Crear primer ingrediente
+                </button>
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-2">
@@ -808,14 +816,18 @@ export default function Inventario({
                         : <span className="text-[10px] text-amber-800 italic">Sin asignar</span>}
                     </div>
                     <span className={`text-lg font-bold tabular-nums ${stockColor(ing.stock)}`}>{ing.stock}</span>
-                    <button onClick={() => { setIngEditTarget(ing); setIngEditName(ing.name); setIngEditStock(String(ing.stock)); }}
-                      className="w-8 h-8 flex items-center justify-center rounded-md bg-amber-700 hover:bg-amber-600 text-white p-1.5 cursor-pointer transition-colors">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
-                    </button>
-                    <button onClick={() => { setIngDeleteTarget(ing); setIngDeleteConfirm(""); }}
-                      className="w-8 h-8 flex items-center justify-center rounded-md bg-red-800 hover:bg-red-700 text-white p-1.5 cursor-pointer transition-colors">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
-                    </button>
+                    {!readOnly && onEditIngredient && (
+                      <button onClick={() => { setIngEditTarget(ing); setIngEditName(ing.name); setIngEditStock(String(ing.stock)); }}
+                        className="w-8 h-8 flex items-center justify-center rounded-md bg-amber-700 hover:bg-amber-600 text-white p-1.5 cursor-pointer transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
+                      </button>
+                    )}
+                    {!readOnly && onDeleteIngredient && (
+                      <button onClick={() => { setIngDeleteTarget(ing); setIngDeleteConfirm(""); }}
+                        className="w-8 h-8 flex items-center justify-center rounded-md bg-red-800 hover:bg-red-700 text-white p-1.5 cursor-pointer transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -828,23 +840,25 @@ export default function Inventario({
       {section === "productos" && (
         <div className="flex flex-col gap-3">
           <div className="flex justify-between items-center">
-            <p className="text-yellow-700 text-xs">Agrega, edita o elimina productos</p>
-            <button onClick={() => setShowAddModal(true)}
-              className="bg-amber-500 hover:bg-amber-400 text-amber-950 text-xs font-bold py-2 px-4 rounded-md cursor-pointer uppercase transition-colors">
-              + Agregar producto
-            </button>
+            <p className="text-yellow-700 text-xs">
+              {readOnly ? "Lista de productos disponibles" : "Agrega, edita o elimina productos"}
+            </p>
+            {!readOnly && onAddProduct && (
+              <button onClick={() => setShowAddModal(true)}
+                className="bg-amber-500 hover:bg-amber-400 text-amber-950 text-xs font-bold py-2 px-4 rounded-md cursor-pointer uppercase transition-colors">
+                + Agregar producto
+              </button>
+            )}
           </div>
 
           <div className="flex flex-col gap-2.5">
             {products.length === 0 ? (
               <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-6 text-center text-amber-700 text-sm">
-                No hay productos. Agrega uno con el botón de arriba.
+                {readOnly ? "No hay productos disponibles." : "No hay productos. Agrega uno con el botón de arriba."}
               </div>
             ) : products.map((product) => {
-              // ── Product card in list ──────────────────────────────────────
               const isBebida = product.category === "Bebida";
 
-              // Stock status for food (ingredient-based)
               const variants = getVariantKeys(product);
               const assignedIngIds = new Set(
                 Object.values(product.ingredientMap ?? {}).flatMap((u) => Object.keys(u))
@@ -853,7 +867,6 @@ export default function Inventario({
               const hasLowStock   = assignedIngs.some((i) => i.stock > 0 && i.stock <= 5);
               const hasOutOfStock = assignedIngs.some((i) => i.stock === 0);
 
-              // Stock status for drinks (drinkSize-based)
               const drinkSizesWithStock = (product.drinkSizes ?? []).filter((ds) => ds.stock > 0);
               const drinkHasLow    = (product.drinkSizes ?? []).some((ds) => ds.stock > 0 && ds.stock <= 5);
               const drinkHasOut    = (product.drinkSizes ?? []).some((ds) => ds.stock === 0 && drinkSizesWithStock.length > 0);
@@ -867,7 +880,6 @@ export default function Inventario({
                       <span className="text-[10px] font-bold uppercase text-amber-700 bg-amber-900/60 border border-amber-800 rounded-full px-2 py-0.5">
                         {product.category}
                       </span>
-                      {/* Stock badge */}
                       {isBebida ? (
                         drinkAllUntk ? null : (
                           drinkHasOut
@@ -886,22 +898,28 @@ export default function Inventario({
                         )
                       )}
                     </div>
-                    <div className="absolute top-0 right-0 flex gap-2">
-                      <button
-                        onClick={() => { setEditTarget(product); setEditForm(productToForm(product)); setEditErrors({}); }}
-                        className="w-8 h-8 flex items-center justify-center rounded-md bg-amber-700 hover:bg-amber-600 text-white p-1.5 cursor-pointer transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
-                      </button>
-                      <button onClick={() => { setDeleteTarget(product); setDeleteConfirm(""); }}
-                        className="w-8 h-8 flex items-center justify-center rounded-md bg-red-800 hover:bg-red-700 text-white p-1.5 cursor-pointer transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
-                      </button>
-                    </div>
+                    {/* Botones de acción solo si no es readOnly */}
+                    {!readOnly && (
+                      <div className="absolute top-0 right-0 flex gap-2">
+                        {onEditProduct && (
+                          <button
+                            onClick={() => { setEditTarget(product); setEditForm(productToForm(product)); setEditErrors({}); }}
+                            className="w-8 h-8 flex items-center justify-center rounded-md bg-amber-700 hover:bg-amber-600 text-white p-1.5 cursor-pointer transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
+                          </button>
+                        )}
+                        {onDeleteProduct && (
+                          <button onClick={() => { setDeleteTarget(product); setDeleteConfirm(""); }}
+                            className="w-8 h-8 flex items-center justify-center rounded-md bg-red-800 hover:bg-red-700 text-white p-1.5 cursor-pointer transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Price / size summary */}
                   {isBebida ? (
-                    /* Drink: show drinkSizes table */
                     <div className="flex flex-col gap-1.5">
                       {(product.drinkSizes ?? []).map((ds) => (
                         <div key={ds.key} className="flex items-center gap-3">
@@ -914,7 +932,6 @@ export default function Inventario({
                       ))}
                     </div>
                   ) : (
-                    /* Food: show tiered prices */
                     <div className="flex flex-col gap-2">
                       {Object.entries(product.sizeLabels).map(([sk, sl]) => {
                         const tiers = product.tieredPrices[sk] ?? [];
@@ -939,7 +956,6 @@ export default function Inventario({
                         </p>
                       )}
 
-                      {/* Food ingredient summary */}
                       {variants.some((v) => Object.keys(product.ingredientMap?.[v.variantKey] ?? {}).length > 0) && (
                         <div className="mt-3 pt-3 border-t border-amber-800/60 flex flex-col gap-2">
                           <p className="text-[10px] uppercase tracking-widest text-yellow-700">Ingredientes</p>
@@ -980,10 +996,10 @@ export default function Inventario({
         </div>
       )}
 
-      {/* ══ Modals ══ */}
+      {/* ══ Modals — solo si no es readOnly ══ */}
 
       {/* Add product */}
-      {showAddModal && (
+      {showAddModal && !readOnly && onAddProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <Backdrop onClick={() => { setShowAddModal(false); setAddForm(EMPTY_FORM); setAddErrors({}); }} />
           <div className="relative bg-amber-950 border-2 border-amber-700 rounded-xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-5 max-h-[90vh] overflow-y-auto">
@@ -1005,7 +1021,7 @@ export default function Inventario({
       )}
 
       {/* Edit product */}
-      {editTarget && (
+      {editTarget && !readOnly && onEditProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <Backdrop onClick={() => { setEditTarget(null); setEditForm(EMPTY_FORM); setEditErrors({}); }} />
           <div className="relative bg-amber-950 border-2 border-amber-600 rounded-xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-5 max-h-[90vh] overflow-y-auto">
@@ -1030,7 +1046,7 @@ export default function Inventario({
       )}
 
       {/* Delete product */}
-      {deleteTarget && (
+      {deleteTarget && !readOnly && onDeleteProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <Backdrop onClick={() => { setDeleteTarget(null); setDeleteConfirm(""); }} />
           <div className="relative bg-amber-950 border-2 border-red-800 rounded-xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
@@ -1066,7 +1082,7 @@ export default function Inventario({
       )}
 
       {/* Add ingredient */}
-      {showIngModal && (
+      {showIngModal && !readOnly && onAddIngredient && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <Backdrop onClick={() => setShowIngModal(false)} />
           <div className="relative bg-amber-950 border-2 border-amber-700 rounded-xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-5">
@@ -1094,7 +1110,7 @@ export default function Inventario({
       )}
 
       {/* Edit ingredient */}
-      {ingEditTarget && (
+      {ingEditTarget && !readOnly && onEditIngredient && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <Backdrop onClick={() => setIngEditTarget(null)} />
           <div className="relative bg-amber-950 border-2 border-amber-600 rounded-xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-5">
@@ -1119,7 +1135,7 @@ export default function Inventario({
       )}
 
       {/* Delete ingredient */}
-      {ingDeleteTarget && (
+      {ingDeleteTarget && !readOnly && onDeleteIngredient && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <Backdrop onClick={() => { setIngDeleteTarget(null); setIngDeleteConfirm(""); }} />
           <div className="relative bg-amber-950 border-2 border-red-800 rounded-xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
