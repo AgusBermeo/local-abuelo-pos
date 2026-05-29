@@ -163,6 +163,7 @@ export type Sale = {
   orderType?: "servir" | "llevar";
   deductions?: IngredientDeduction[];
   drinkDeductions?: DrinkDeduction[];
+  soldBy?: { userId: string; displayName: string };
 };
 
 export default function HomeClient({ session }: { session: SessionPayload | null }) {
@@ -228,6 +229,9 @@ export default function HomeClient({ session }: { session: SessionPayload | null
         paymentMethod,
         tax,
         orderType,
+        soldBy: session
+          ? { userId: session.userId, displayName: session.displayName }
+          : undefined,
         deductions:      isServir ? undefined : deductions,
         drinkDeductions: isServir ? undefined : drinkDeductions,
       },

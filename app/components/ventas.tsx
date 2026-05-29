@@ -19,6 +19,7 @@ type Sale = {
   paymentMethod?: PaymentMethod;
   tax?: number;
   orderType?: "servir" | "llevar";
+  soldBy?: { userId: string; displayName: string };
 };
 
 const PAYMENT_LABELS: Record<PaymentMethod, { label: string; emoji: string; classes: string }> = {
@@ -354,16 +355,18 @@ export default function Ventas({
                     <span>🗓️</span>
                     <span>
                       {new Date(sale.date).toLocaleDateString("es-EC", {
-                        day: "numeric",
-                        month: "numeric",
-                        year: "numeric",
+                        day: "numeric", month: "numeric", year: "numeric",
                       })}{" "}
                       ·{" "}
                       {new Date(sale.date).toLocaleTimeString("es-EC", {
-                        hour: "2-digit",
-                        minute: "2-digit",
+                        hour: "2-digit", minute: "2-digit",
                       })}
                     </span>
+                    {sale.soldBy && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-amber-700 bg-amber-900/40 border border-amber-800 rounded-full px-2 py-0.5">
+                        👤 {sale.soldBy.displayName}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-amber-400">${sale.total.toFixed(2)}</span>
