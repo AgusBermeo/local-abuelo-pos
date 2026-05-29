@@ -418,7 +418,7 @@ export default function Cobrar(props: {
             return (
               <div
                 key={sizeKey}
-                className={`flex flex-col gap-1.5 rounded-lg border p-3 transition-colors ${
+                className={`flex flex-col gap-1.5 rounded-lg border flex-1 p-3 transition-colors ${
                   outOfStock
                     ? "border-red-900/60 bg-red-950/10 opacity-60"
                     : qty > 0
