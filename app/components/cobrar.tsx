@@ -50,8 +50,8 @@ function getFoodVariantCap(product: Product, sizeKey: string, fillingKey: string
 }
 
 /** Stock for a drink size. null = untracked. */
-function getDrinkEffectiveCapacity(drinkSize: DrinkSize, cartQty: number): number | null {
-  if (drinkSize.stock === 0 && cartQty === 0) return null;
+function getDrinkEffectiveCapacity(drinkSize: DrinkSize): number | null {
+  if (drinkSize.stock === 0) return null;
   return drinkSize.stock;
 }
 
@@ -173,7 +173,7 @@ export default function Cobrar(props: {
     } else {
       const ds = product.drinkSizes?.find((d) => d.key === sizeKey);
       if (ds) {
-        const cap = getDrinkEffectiveCapacity(ds, cart.find((e) => e.key === key)?.quantity ?? 0);
+        const cap = getDrinkEffectiveCapacity(ds);
         if (cap !== null) capped = Math.min(newQty, cap);
       }
     }
@@ -195,7 +195,7 @@ export default function Cobrar(props: {
     } else {
       const ds = product.drinkSizes?.find((d) => d.key === sizeKey);
       if (ds) {
-        const cap = getDrinkEffectiveCapacity(ds, current);
+        const cap = getDrinkEffectiveCapacity(ds);
         if (cap !== null && current >= cap) return;
       }
     }
@@ -501,7 +501,7 @@ export default function Cobrar(props: {
             const entry = cart.find((e) => e.key === ck);
             const qty = entry?.quantity ?? 0;
 
-            const cap = getDrinkEffectiveCapacity(ds, qty);
+            const cap = getDrinkEffectiveCapacity(ds);
             const outOfStock = cap !== null && cap === 0 && qty === 0;
             const atMax      = cap !== null && qty >= cap;
             const stockTracked = cap !== null;
