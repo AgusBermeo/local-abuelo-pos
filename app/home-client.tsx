@@ -15,7 +15,7 @@ import { useLocalStorage } from "./hooks/useLocalStorage";
 export type PriceTier = { minQty: number; pricePerUnit: number };
 export type TieredPrices = Record<string, PriceTier[]>;
 
-// ── Ingredient ────────────────────────────────────────────────────────────────
+// ── Ingredient (kept for legacy compatibility, no longer used for food stock) ─
 export type Ingredient = { id: string; name: string; stock: number };
 
 // ── DrinkSize ─────────────────────────────────────────────────────────────────
@@ -31,6 +31,9 @@ export type Product = {
   sizeLabels: Record<string, string>;
   fillingLabels: Record<string, string>;
   size?: string;
+  /** Food only: stock per variant key ("grande-carne": 20). 0 = untracked */
+  variantStock?: Record<string, number>;
+  /** @deprecated use variantStock for food */
   ingredientMap: Record<string, Record<string, number>>;
   // Bebidas: multiple presentations with individual stock
   drinkSizes?: DrinkSize[];
@@ -75,7 +78,6 @@ export function getVariantKeys(product: Product): Array<{ variantKey: string; la
 export function normalizeDrinkSizes(product: Product): Product {
   if (product.category !== "Bebida") return product;
   if (product.drinkSizes && product.drinkSizes.length > 0) return product;
-  // Migrate legacy single-size drink
   const label = product.size ?? "Unidad";
   return {
     ...product,
@@ -83,10 +85,22 @@ export function normalizeDrinkSizes(product: Product): Product {
   };
 }
 
+/** Get stock for a food variant. Returns null if untracked (no variantStock or 0). */
+export function getFoodVariantStock(product: Product, variantKey: string): number | null {
+  if (!product.variantStock) return null;
+  const s = product.variantStock[variantKey];
+  return s !== undefined && s > 0 ? s : null;
+}
+
+// ── Deduction types ───────────────────────────────────────────────────────────
+/** @deprecated no longer used for food */
 export type IngredientDeduction = { ingredientId: string; quantity: number };
 
-/** Drink size deductions: each sold unit reduces that drinkSize's stock by 1 */
+/** Drink size deductions */
 export type DrinkDeduction = { productId: number; drinkSizeKey: string; quantity: number };
+
+/** Food variant deductions */
+export type FoodVariantDeduction = { productId: number; variantKey: string; quantity: number };
 
 // ── Default products ──────────────────────────────────────────────────────────
 const INITIAL_PRODUCTS: Product[] = [
@@ -113,6 +127,7 @@ const INITIAL_PRODUCTS: Product[] = [
       ],
     },
     ingredientMap: {},
+    variantStock: {},
   },
   {
     id: 6, name: "Café Pasado", category: "Bebida",
@@ -161,8 +176,10 @@ export type Sale = {
   total: number; status: "pending" | "delivered"; paymentMethod: PaymentMethod;
   tax?: number;
   orderType?: "servir" | "llevar";
+  /** @deprecated */
   deductions?: IngredientDeduction[];
   drinkDeductions?: DrinkDeduction[];
+  foodVariantDeductions?: FoodVariantDeduction[];
   soldBy?: { userId: string; displayName: string };
 };
 
@@ -174,7 +191,6 @@ export default function HomeClient({ session }: { session: SessionPayload | null
 
   const deliveredRef = useRef<Set<number>>(new Set());
 
-  // ── Rol del usuario actual ────────────────────────────────────────────────
   const userRole = session?.role ?? "cajero";
   const canManageSales = userRole === "superadmin" || userRole === "admin";
   const canManageInventory = userRole === "superadmin" || userRole === "admin";
@@ -186,6 +202,7 @@ export default function HomeClient({ session }: { session: SessionPayload | null
       sizeLabels:    product.sizeLabels    ?? {},
       fillingLabels: product.fillingLabels ?? {},
       ingredientMap: product.ingredientMap ?? {},
+      variantStock:  product.variantStock  ?? {},
     }),
   }));
 
@@ -207,12 +224,31 @@ export default function HomeClient({ session }: { session: SessionPayload | null
     );
   };
 
+  // ── applyFoodVariantDeductions ────────────────────────────────────────────
+  const applyFoodVariantDeductions = (deductions: FoodVariantDeduction[]) => {
+    if (!deductions || deductions.length === 0) return;
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.category !== "Comida") return p;
+        const relevant = deductions.filter((d) => d.productId === p.id);
+        if (relevant.length === 0) return p;
+        const newStock = { ...(p.variantStock ?? {}) };
+        for (const ded of relevant) {
+          if (newStock[ded.variantKey] !== undefined && newStock[ded.variantKey] > 0) {
+            newStock[ded.variantKey] = Math.max(0, newStock[ded.variantKey] - ded.quantity);
+          }
+        }
+        return { ...p, variantStock: newStock };
+      })
+    );
+  };
+
   // ── addSale ───────────────────────────────────────────────────────────────
   const addSale = (
     items: OrderItem[],
     total: number,
     paymentMethod: PaymentMethod,
-    deductions: IngredientDeduction[],
+    foodVariantDeductions: FoodVariantDeduction[],
     drinkDeductions: DrinkDeduction[],
     tax: number = 0,
     orderType: "servir" | "llevar" = "servir"
@@ -232,48 +268,21 @@ export default function HomeClient({ session }: { session: SessionPayload | null
         soldBy: session
           ? { userId: session.userId, displayName: session.displayName }
           : undefined,
-        deductions:      isServir ? undefined : deductions,
-        drinkDeductions: isServir ? undefined : drinkDeductions,
+        foodVariantDeductions: isServir ? undefined : foodVariantDeductions,
+        drinkDeductions:       isServir ? undefined : drinkDeductions,
       },
       ...prev,
     ]);
 
     if (isServir) {
-      // Ingredient deductions
-      if (deductions.length > 0) {
-        const agg: Record<string, number> = {};
-        deductions.forEach(({ ingredientId, quantity }) => {
-          agg[ingredientId] = (agg[ingredientId] ?? 0) + quantity;
-        });
-        setIngredients((prev) =>
-          prev.map((ing) =>
-            agg[ing.id] !== undefined
-              ? { ...ing, stock: Math.max(0, ing.stock - agg[ing.id]) }
-              : ing
-          )
-        );
-      }
-      // Drink stock deductions
+      applyFoodVariantDeductions(foodVariantDeductions);
       applyDrinkDeductions(drinkDeductions);
     }
   };
 
   const addIngredient    = (ing: Ingredient) => setIngredients((prev) => [...prev, ing]);
   const editIngredient   = (ing: Ingredient) => setIngredients((prev) => prev.map((i) => i.id === ing.id ? ing : i));
-  const deleteIngredient = (id: string) => {
-    setIngredients((prev) => prev.filter((i) => i.id !== id));
-    setProducts((prev) =>
-      prev.map((p) => {
-        const newMap: Record<string, Record<string, number>> = {};
-        Object.entries(p.ingredientMap).forEach(([vk, qty]) => {
-          const filtered: Record<string, number> = {};
-          Object.entries(qty).forEach(([iid, q]) => { if (iid !== id) filtered[iid] = q; });
-          newMap[vk] = filtered;
-        });
-        return { ...p, ingredientMap: newMap };
-      })
-    );
-  };
+  const deleteIngredient = (id: string) => setIngredients((prev) => prev.filter((i) => i.id !== id));
 
   const addProduct    = (p: Product) => setProducts((prev) => [...prev, p]);
   const editProduct   = (p: Product) => setProducts((prev) => prev.map((x) => x.id === p.id ? p : x));
@@ -287,7 +296,7 @@ export default function HomeClient({ session }: { session: SessionPayload | null
       setSales((prev) =>
         prev.map((s) =>
           s.id === id
-            ? { ...s, status: "delivered", deductions: undefined, drinkDeductions: undefined }
+            ? { ...s, status: "delivered", foodVariantDeductions: undefined, drinkDeductions: undefined }
             : s
         )
       );
@@ -298,21 +307,9 @@ export default function HomeClient({ session }: { session: SessionPayload | null
     const sale = sales.find((s) => s.id === id);
 
     if (sale?.orderType === "llevar") {
-      // Ingredient deductions
-      if (sale.deductions && sale.deductions.length > 0) {
-        const agg: Record<string, number> = {};
-        sale.deductions.forEach(({ ingredientId, quantity }) => {
-          agg[ingredientId] = (agg[ingredientId] ?? 0) + quantity;
-        });
-        setIngredients((prev) =>
-          prev.map((ing) =>
-            agg[ing.id] !== undefined
-              ? { ...ing, stock: Math.max(0, ing.stock - agg[ing.id]) }
-              : ing
-          )
-        );
+      if (sale.foodVariantDeductions && sale.foodVariantDeductions.length > 0) {
+        applyFoodVariantDeductions(sale.foodVariantDeductions);
       }
-      // Drink stock deductions
       if (sale.drinkDeductions && sale.drinkDeductions.length > 0) {
         applyDrinkDeductions(sale.drinkDeductions);
       }
@@ -321,7 +318,7 @@ export default function HomeClient({ session }: { session: SessionPayload | null
     setSales((prev) =>
       prev.map((s) =>
         s.id === id
-          ? { ...s, status: "delivered", deductions: undefined, drinkDeductions: undefined }
+          ? { ...s, status: "delivered", foodVariantDeductions: undefined, drinkDeductions: undefined }
           : s
       )
     );
@@ -368,13 +365,9 @@ export default function HomeClient({ session }: { session: SessionPayload | null
       content: (
         <Inventario
           products={normalizedProducts}
-          ingredients={ingredients}
           onAddProduct={canManageInventory ? addProduct : undefined}
           onDeleteProduct={canManageInventory ? deleteProduct : undefined}
           onEditProduct={canManageInventory ? editProduct : undefined}
-          onAddIngredient={canManageInventory ? addIngredient : undefined}
-          onEditIngredient={canManageInventory ? editIngredient : undefined}
-          onDeleteIngredient={canManageInventory ? deleteIngredient : undefined}
           readOnly={!canManageInventory}
         />
       ),

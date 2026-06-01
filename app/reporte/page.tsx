@@ -13,11 +13,16 @@ type Sale = {
   orderType?: "servir" | "llevar";
   soldBy?: { userId: string; displayName: string };
 };
-type Ingredient = { id: string; name: string; stock: number };
+type DrinkSize = { key: string; label: string; price: number; stock: number };
 type Product = {
   id: number; name: string; category: "Comida" | "Bebida";
-  price: unknown; size: unknown; relleno?: unknown;
+  sizeLabels: Record<string, string>;
+  fillingLabels: Record<string, string>;
+  tieredPrices: Record<string, unknown[]>;
+  /** Stock restante por variante: { "grande-carne": 12, ... } */
+  variantStock?: Record<string, number>;
   ingredientMap: Record<string, Record<string, number>>;
+  drinkSizes?: DrinkSize[];
 };
 
 const PAYMENT_LABELS: Record<PaymentMethod, { label: string; emoji: string; bar: string }> = {
@@ -34,7 +39,6 @@ function toLocalDateStr(date: Date | string): string {
 
 type Period = "today" | "yesterday" | "week" | "month" | "all";
 
-// selectedMonth: "YYYY-MM" string, only used when period === "month"
 function getPeriodSales(sales: Sale[], period: Period, selectedMonth?: string): Sale[] {
   const now = new Date();
   return sales.filter((s) => {
@@ -42,9 +46,7 @@ function getPeriodSales(sales: Sale[], period: Period, selectedMonth?: string): 
     if (period === "today")     return toLocalDateStr(d) === toLocalDateStr(now);
     if (period === "yesterday") { const y = new Date(now); y.setDate(now.getDate() - 1); return toLocalDateStr(d) === toLocalDateStr(y); }
     if (period === "week") {
-      const w = new Date(now);
-      w.setDate(now.getDate() - 6);
-      w.setHours(0, 0, 0, 0);
+      const w = new Date(now); w.setDate(now.getDate() - 6); w.setHours(0, 0, 0, 0);
       return d >= w;
     }
     if (period === "month") {
@@ -62,30 +64,17 @@ function getPrevPeriodSales(sales: Sale[], period: Period, selectedMonth?: strin
   const now = new Date();
   return sales.filter((s) => {
     const d = new Date(s.date);
-    if (period === "today") {
-      const y = new Date(now); y.setDate(now.getDate() - 1);
-      return toLocalDateStr(d) === toLocalDateStr(y);
-    }
-    if (period === "yesterday") {
-      const y2 = new Date(now); y2.setDate(now.getDate() - 2);
-      return toLocalDateStr(d) === toLocalDateStr(y2);
-    }
+    if (period === "today") { const y = new Date(now); y.setDate(now.getDate() - 1); return toLocalDateStr(d) === toLocalDateStr(y); }
+    if (period === "yesterday") { const y2 = new Date(now); y2.setDate(now.getDate() - 2); return toLocalDateStr(d) === toLocalDateStr(y2); }
     if (period === "week") {
       const end = new Date(now); end.setDate(now.getDate() - 7); end.setHours(23, 59, 59, 999);
       const start = new Date(now); start.setDate(now.getDate() - 13); start.setHours(0, 0, 0, 0);
       return d >= start && d <= end;
     }
     if (period === "month") {
-      let year: number;
-      let month: number; // 0-indexed
-      if (selectedMonth) {
-        const [y, m] = selectedMonth.split("-").map(Number);
-        year = y;
-        month = m - 1;
-      } else {
-        year = now.getFullYear();
-        month = now.getMonth();
-      }
+      let year: number; let month: number;
+      if (selectedMonth) { const [y, m] = selectedMonth.split("-").map(Number); year = y; month = m - 1; }
+      else { year = now.getFullYear(); month = now.getMonth(); }
       const prev = new Date(year, month - 1, 1);
       return d.getFullYear() === prev.getFullYear() && d.getMonth() === prev.getMonth();
     }
@@ -106,7 +95,6 @@ function lastNDays(n: number, endOffset = 0): string[] {
   });
 }
 
-/** Returns all "YYYY-MM" months that appear in sales, sorted descending */
 function getAvailableMonths(sales: Sale[]): string[] {
   const set = new Set<string>();
   for (const s of sales) {
@@ -131,9 +119,7 @@ function SectionCard({ title, children }: { title: string; children: React.React
   );
 }
 
-function StatCard({
-  label, value, sub, accent = "amber", delta: d,
-}: {
+function StatCard({ label, value, sub, accent = "amber", delta: d }: {
   label: string; value: string; sub?: string;
   accent?: "amber" | "green" | "blue" | "purple";
   delta?: { pct: number; up: boolean; neutral: boolean };
@@ -155,7 +141,6 @@ function StatCard({
 
 // ── Bar chart ─────────────────────────────────────────────────────────────────
 function DailyBarChart({ sales, days, endOffset = 0, monthYM }: { sales: Sale[]; days: number; endOffset?: number; monthYM?: string }) {
-  // If monthYM provided, generate all days in that month instead of last N days
   let dates: string[];
   if (monthYM) {
     const [y, m] = monthYM.split("-").map(Number);
@@ -199,7 +184,6 @@ function DailyBarChart({ sales, days, endOffset = 0, monthYM }: { sales: Sale[];
                   style={{ height: `${Math.max(heightPct, revenue > 0 ? 4 : 0)}%` }}
                 />
               </div>
-              {/* Only show day label if not too many bars */}
               {dates.length <= 14 && (
                 <span className={`text-[9px] uppercase font-bold ${isToday ? "text-amber-400" : "text-amber-700"}`}>
                   {dayNames[d.getDay()]}
@@ -222,9 +206,7 @@ function DailyBarChart({ sales, days, endOffset = 0, monthYM }: { sales: Sale[];
 }
 
 // ── Comparativa ───────────────────────────────────────────────────────────────
-function ComparativaRow({
-  label, curr, prev, format = (v: number) => String(v),
-}: {
+function ComparativaRow({ label, curr, prev, format = (v: number) => String(v) }: {
   label: string; curr: number; prev: number; format?: (v: number) => string;
 }) {
   const d = delta(curr, prev);
@@ -259,28 +241,24 @@ function ComparativaRow({
 function HistorialSection({ sales }: { sales: Sale[] }) {
   const [expanded, setExpanded] = useState<number | null>(null);
   const sorted = [...sales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 20);
-
   if (sorted.length === 0) return <p className="text-amber-700 text-sm">Sin ventas en este período.</p>;
-
   return (
     <div className="flex flex-col gap-2">
       {sorted.map((sale) => {
         const isOpen = expanded === sale.id;
-        const pay    = PAYMENT_LABELS[sale.paymentMethod] ?? { emoji: "?", label: "—" };
+        const pay = PAYMENT_LABELS[sale.paymentMethod] ?? { emoji: "?", label: "—" };
         const isDelivered = sale.status === "delivered";
         return (
           <div key={sale.id}
             className={`border rounded-lg overflow-hidden transition-colors cursor-pointer ${isOpen ? "border-amber-600 bg-amber-900/40" : "border-amber-800 bg-amber-900/20 hover:border-amber-700"}`}
-            onClick={() => setExpanded(isOpen ? null : sale.id)}
-          >
+            onClick={() => setExpanded(isOpen ? null : sale.id)}>
             <div className="flex items-center justify-between px-4 py-3 gap-3">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-base leading-none shrink-0">{pay.emoji}</span>
                 <div className="flex flex-col min-w-0">
                   <span className="text-xs text-amber-200 font-semibold truncate">
                     {new Date(sale.date).toLocaleDateString("es-EC", { day: "numeric", month: "short", year: "numeric" })}
-                    {" · "}
-                    {new Date(sale.date).toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit" })}
+                    {" · "}{new Date(sale.date).toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit" })}
                   </span>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-[10px] text-amber-700 uppercase">{pay.label}</span>
@@ -320,365 +298,27 @@ function HistorialSection({ sales }: { sales: Sale[] }) {
   );
 }
 
-// ── SVG Pie Chart ─────────────────────────────────────────────────────────────
-type PieSlice = { label: string; value: number; color: string };
-
-function PieChart({ slices, size = 120 }: { slices: PieSlice[]; size?: number }) {
-  const total = slices.reduce((s, x) => s + x.value, 0);
-  if (total === 0) return null;
-
-  const cx = size / 2;
-  const cy = size / 2;
-  const r  = size / 2 - 6;
-
-  let cumAngle = -Math.PI / 2;
-  const paths = slices.map((slice) => {
-    const angle = (slice.value / total) * 2 * Math.PI;
-    const x1 = cx + r * Math.cos(cumAngle);
-    const y1 = cy + r * Math.sin(cumAngle);
-    cumAngle += angle;
-    const x2 = cx + r * Math.cos(cumAngle);
-    const y2 = cy + r * Math.sin(cumAngle);
-    const large = angle > Math.PI ? 1 : 0;
-    if (slices.length === 1) {
-      return <circle key={slice.label} cx={cx} cy={cy} r={r} fill={slice.color} />;
-    }
-    return (
-      <path
-        key={slice.label}
-        d={`M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z`}
-        fill={slice.color}
-        stroke="#1c0a00"
-        strokeWidth="1.5"
-      />
-    );
-  });
-
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {paths}
-      <circle cx={cx} cy={cy} r={r * 0.42} fill="#1c0a00" />
-    </svg>
-  );
-}
-
-// ── Palettes ──────────────────────────────────────────────────────────────────
-const PIE_COLORS_RELLENO = ["#ef4444", "#f59e0b", "#f97316", "#fbbf24", "#dc2626"];
-const PIE_COLORS_TAMANO  = ["#3b82f6", "#06b6d4", "#8b5cf6", "#0ea5e9", "#6366f1"];
-
-function classifyIngredient(name: string): "relleno" | "tamano" | "other" {
-  const n = name.toLowerCase();
-  if (n.includes("carne") || n.includes("pollo")) return "relleno";
-  if (n.includes("masa"))                          return "tamano";
-  if (n.includes("grande") || n.includes("normal") || n.includes("bocadito")) return "tamano";
-  return "other";
-}
-
-function IngredientesSection({
-  sales, products, ingredients,
-}: {
-  sales: Sale[]; products: Product[]; ingredients: Ingredient[];
-}) {
-  const ingConsumed: Record<string, number> = {};
-
-  for (const sale of sales) {
-    for (const item of sale.items) {
-      const product = products.find((p) => p.category === "Comida" && item.name.startsWith(p.name));
-      if (!product) continue;
-
-      const nameSuffix = item.name.slice(product.name.length).trim().toLowerCase();
-      let matched = false;
-
-      for (const [vk, usage] of Object.entries(product.ingredientMap)) {
-        const dashIdx    = vk.lastIndexOf("-");
-        const sizeKey    = dashIdx >= 0 ? vk.slice(0, dashIdx) : vk;
-        const fillingKey = dashIdx >= 0 ? vk.slice(dashIdx + 1) : "none";
-
-        const sizeMatch = sizeKey === "single" || nameSuffix.includes(sizeKey.toLowerCase());
-        const fillMatch = fillingKey === "none"  || nameSuffix.includes(fillingKey.toLowerCase());
-
-        if (sizeMatch && fillMatch) {
-          for (const [ingId, qtyPerUnit] of Object.entries(usage)) {
-            ingConsumed[ingId] = (ingConsumed[ingId] ?? 0) + qtyPerUnit * item.quantity;
-          }
-          matched = true;
-          break;
-        }
-      }
-      if (!matched) {
-        const entries = Object.entries(product.ingredientMap);
-        if (entries.length > 0) {
-          const [, usage] = entries[0];
-          for (const [ingId, qtyPerUnit] of Object.entries(usage)) {
-            ingConsumed[ingId] = (ingConsumed[ingId] ?? 0) + qtyPerUnit * item.quantity;
-          }
-        }
-      }
-    }
-  }
-
-  type IngRow = { ing: Ingredient; consumed: number };
-  const rellenoRows: IngRow[] = [];
-  const tamanoRows:  IngRow[] = [];
-
-  for (const ing of ingredients) {
-    const consumed = ingConsumed[ing.id] ?? 0;
-    if (consumed === 0) continue;
-    const cat = classifyIngredient(ing.name);
-    if (cat === "relleno") rellenoRows.push({ ing, consumed });
-    else                   tamanoRows.push({ ing, consumed });
-  }
-
-  rellenoRows.sort((a, b) => b.consumed - a.consumed);
-  tamanoRows.sort((a, b) => b.consumed - a.consumed);
-
-  const hasAny = rellenoRows.length > 0 || tamanoRows.length > 0;
-
-  if (!hasAny) {
-    return (
-      <div className="flex flex-col gap-2">
-        <p className="text-amber-700 text-sm">Sin datos de consumo para este período.</p>
-        <p className="text-[10px] text-amber-800">Asegúrate de haber configurado los ingredientes en el Inventario.</p>
-      </div>
-    );
-  }
-
-  const rellenoSlices: PieSlice[] = rellenoRows.map((r, i) => ({
-    label: r.ing.name, value: r.consumed,
-    color: PIE_COLORS_RELLENO[i % PIE_COLORS_RELLENO.length],
-  }));
-  const tamanoSlices: PieSlice[] = tamanoRows.map((r, i) => ({
-    label: r.ing.name, value: r.consumed,
-    color: PIE_COLORS_TAMANO[i % PIE_COLORS_TAMANO.length],
-  }));
-
-  function PiePanel({
-    title, subtitle, rows, slices, accentText, borderColor, emptyMsg,
-  }: {
-    title: string; subtitle: string; rows: IngRow[]; slices: PieSlice[];
-    accentText: string; borderColor: string; emptyMsg: string;
-  }) {
-    const totalConsumed = rows.reduce((s, r) => s + r.consumed, 0);
-    const maxConsumed   = Math.max(...rows.map((r) => r.consumed), 1);
-
-    return (
-      <div className={`flex-1 flex flex-col gap-4 bg-amber-900/20 border-2 ${borderColor} rounded-xl p-4 min-w-0`}>
-        <div className="flex flex-col gap-0.5">
-          <p className={`text-[10px] uppercase tracking-widest font-bold ${accentText}`}>{title}</p>
-          <p className="text-[10px] text-amber-800">{subtitle}</p>
-        </div>
-
-        {rows.length === 0 ? (
-          <p className="text-amber-800 text-xs italic">{emptyMsg}</p>
-        ) : (
-          <>
-            <div className="flex justify-center">
-              <PieChart slices={slices} size={120} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              {rows.map((r, i) => {
-                const pct = totalConsumed > 0 ? ((r.consumed / totalConsumed) * 100).toFixed(0) : "0";
-                return (
-                  <div key={r.ing.id} className="flex items-center gap-2 min-w-0">
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: slices[i]?.color }} />
-                    <span className="text-xs text-amber-200 flex-1 truncate">{r.ing.name}</span>
-                    <span className="text-[10px] font-bold tabular-nums shrink-0" style={{ color: slices[i]?.color }}>{pct}%</span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="flex flex-col gap-2 pt-2 border-t border-amber-800/40">
-              {rows.map(({ ing, consumed }, i) => (
-                <div key={ing.id} className="flex flex-col gap-0.5">
-                  <div className="flex justify-between items-baseline text-[11px]">
-                    <span className="text-amber-300 font-semibold truncate max-w-[55%]">{ing.name}</span>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className={`text-[10px] ${ing.stock === 0 ? "text-red-400" : ing.stock <= 5 ? "text-orange-400" : "text-green-400"}`}>
-                        stock: {ing.stock}
-                      </span>
-                      <span className="text-amber-500 font-bold tabular-nums">−{consumed}</span>
-                    </div>
-                  </div>
-                  <div className="h-1.5 bg-amber-900/60 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{ width: `${(consumed / maxConsumed) * 100}%`, background: slices[i]?.color }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      <p className="text-[10px] text-amber-700">
-        Consumo separado por tipo de ingrediente. Stock actual en verde / naranja / rojo.
-      </p>
-      <div className="flex gap-3 items-start flex-col sm:flex-row">
-        <PiePanel
-          title="🥩 Relleno"
-          subtitle="Carne · Pollo"
-          rows={rellenoRows}
-          slices={rellenoSlices}
-          accentText="text-amber-400"
-          borderColor="border-amber-700/60"
-          emptyMsg="Sin datos de relleno"
-        />
-        <PiePanel
-          title="📐 Tamaño"
-          subtitle="Masa Grande · Normal · Bocadito"
-          rows={tamanoRows}
-          slices={tamanoSlices}
-          accentText="text-blue-400"
-          borderColor="border-blue-900/60"
-          emptyMsg="Sin datos de tamaño"
-        />
-      </div>
-    </div>
-  );
-}
-
-// ── Variantes vendidas ────────────────────────────────────────────────────────
-function VariantesSection({ sales, products }: { sales: Sale[]; products: Product[] }) {
-  const variantCount: Record<string, number> = {};
-
-  for (const sale of sales) {
-    for (const item of sale.items) {
-      const product = products.find(
-        (p) => p.category === "Comida" && item.name.startsWith(p.name)
-      );
-      if (!product) continue;
-
-      const suffix = item.name.slice(product.name.length).trim().toLowerCase();
-      let matchedLabel: string | null = null;
-
-      for (const vk of Object.keys(product.ingredientMap)) {
-        const dashIdx    = vk.lastIndexOf("-");
-        const sizeKey    = dashIdx >= 0 ? vk.slice(0, dashIdx)   : vk;
-        const fillingKey = dashIdx >= 0 ? vk.slice(dashIdx + 1)  : "none";
-
-        const sizeMatch    = sizeKey    === "single" || suffix.includes(sizeKey.toLowerCase());
-        const fillingMatch = fillingKey === "none"   || suffix.includes(fillingKey.toLowerCase());
-
-        if (sizeMatch && fillingMatch) {
-          const sizeLabel    = sizeKey    !== "single" ? sizeKey.charAt(0).toUpperCase()    + sizeKey.slice(1)    : null;
-          const fillingLabel = fillingKey !== "none"   ? fillingKey.charAt(0).toUpperCase() + fillingKey.slice(1) : null;
-          matchedLabel = [sizeLabel, fillingLabel].filter(Boolean).join(" · ");
-          break;
-        }
-      }
-
-      if (!matchedLabel) {
-        matchedLabel = suffix
-          ? suffix.charAt(0).toUpperCase() + suffix.slice(1)
-          : "Sin variante";
-      }
-
-      variantCount[matchedLabel] = (variantCount[matchedLabel] ?? 0) + item.quantity;
-    }
-  }
-
-  const rows = Object.entries(variantCount)
-    .map(([label, qty]) => ({ label, qty }))
-    .sort((a, b) => b.qty - a.qty);
-
-  if (rows.length === 0) {
-    return (
-      <div className="flex flex-col gap-2">
-        <p className="text-amber-700 text-sm">Sin datos de variantes para este período.</p>
-        <p className="text-[10px] text-amber-800">
-          Asegúrate de haber configurado ingredientes por variante en el Inventario.
-        </p>
-      </div>
-    );
-  }
-
-  const maxQty  = rows[0].qty;
-  const total   = rows.reduce((s, r) => s + r.qty, 0);
-
-  const BAR_COLORS = [
-    "bg-amber-500", "bg-orange-500", "bg-red-500",
-    "bg-yellow-500", "bg-lime-500",  "bg-teal-500",
-    "bg-blue-500",  "bg-violet-500", "bg-pink-500",
-  ];
-
-  return (
-    <div className="flex flex-col gap-4">
-      <p className="text-[10px] text-amber-700">
-        Unidades totales vendidas por combinación de tamaño y relleno, todos los productos.
-      </p>
-      <div className="flex flex-col gap-3">
-        {rows.map(({ label, qty }, idx) => {
-          const barColor  = BAR_COLORS[idx % BAR_COLORS.length];
-          const textColor = barColor.replace("bg-", "text-");
-          return (
-            <div key={label} className="flex flex-col gap-1">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-amber-200 font-semibold">{label}</span>
-                <div className="flex items-center gap-3">
-                  <span className="text-amber-700 tabular-nums">
-                    {((qty / total) * 100).toFixed(0)}%
-                  </span>
-                  <span className={`font-bold tabular-nums text-sm ${textColor}`}>
-                    ×{qty}
-                  </span>
-                </div>
-              </div>
-              <div className="h-2 bg-amber-900/60 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${barColor}`}
-                  style={{ width: `${(qty / maxQty) * 100}%` }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <p className="text-[10px] text-amber-800 text-right pt-1 border-t border-amber-800/40">
-        Total: {total} unidades
-      </p>
-    </div>
-  );
-}
-
-// ── Top Products Section ──────────────────────────────────────────────────────
+// ── Top Products ──────────────────────────────────────────────────────────────
 type SortMode = "revenue" | "quantity";
 
 function TopProductsSection({ productTotals }: { productTotals: Record<string, { quantity: number; revenue: number }> }) {
   const [sortMode, setSortMode] = useState<SortMode>("revenue");
-
   const topProducts = Object.entries(productTotals)
     .map(([name, v]) => ({ name, ...v }))
     .sort((a, b) => sortMode === "revenue" ? b.revenue - a.revenue : b.quantity - a.quantity)
     .slice(0, 5);
-
-  const maxVal = topProducts.length > 0
-    ? (sortMode === "revenue" ? topProducts[0].revenue : topProducts[0].quantity)
-    : 1;
+  const maxVal = topProducts.length > 0 ? (sortMode === "revenue" ? topProducts[0].revenue : topProducts[0].quantity) : 1;
 
   return (
     <SectionCard title="🏆 Productos más vendidos">
       <div className="flex bg-amber-900/40 border border-amber-800 rounded-lg p-0.5 gap-0.5 self-start">
         {([["revenue", "💰 Recaudado"], ["quantity", "🔢 Cantidad"]] as [SortMode, string][]).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setSortMode(key)}
+          <button key={key} onClick={() => setSortMode(key)}
             className={`py-1.5 px-3 rounded-md text-[11px] font-bold uppercase tracking-widest cursor-pointer transition-colors ${
-              sortMode === key
-                ? "bg-amber-500 text-amber-950"
-                : "text-amber-700 hover:text-amber-500"
-            }`}
-          >
-            {label}
-          </button>
+              sortMode === key ? "bg-amber-500 text-amber-950" : "text-amber-700 hover:text-amber-500"
+            }`}>{label}</button>
         ))}
       </div>
-
       {topProducts.length === 0 ? (
         <p className="text-amber-700 text-sm">Sin datos para este período.</p>
       ) : (
@@ -690,18 +330,12 @@ function TopProductsSection({ productTotals }: { productTotals: Record<string, {
                 <div className="flex items-center gap-3">
                   <span className="text-[10px] font-black text-amber-700 w-4 shrink-0">#{idx + 1}</span>
                   <span className="flex-1 text-sm text-amber-100 truncate">{name}</span>
-                  <span className={`text-xs shrink-0 tabular-nums font-semibold ${sortMode === "quantity" ? "text-amber-400" : "text-amber-700"}`}>
-                    ×{quantity}
-                  </span>
-                  <span className={`text-sm font-bold tabular-nums shrink-0 w-16 text-right ${sortMode === "revenue" ? "text-amber-400" : "text-amber-500"}`}>
-                    ${revenue.toFixed(2)}
-                  </span>
+                  <span className={`text-xs shrink-0 tabular-nums font-semibold ${sortMode === "quantity" ? "text-amber-400" : "text-amber-700"}`}>×{quantity}</span>
+                  <span className={`text-sm font-bold tabular-nums shrink-0 w-16 text-right ${sortMode === "revenue" ? "text-amber-400" : "text-amber-500"}`}>${revenue.toFixed(2)}</span>
                 </div>
                 <div className="ml-7 h-1.5 bg-amber-900 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${sortMode === "revenue" ? "bg-amber-500" : "bg-blue-500"}`}
-                    style={{ width: `${(barVal / maxVal) * 100}%` }}
-                  />
+                  <div className={`h-full rounded-full transition-all duration-500 ${sortMode === "revenue" ? "bg-amber-500" : "bg-blue-500"}`}
+                    style={{ width: `${(barVal / maxVal) * 100}%` }} />
                 </div>
               </div>
             );
@@ -712,30 +346,20 @@ function TopProductsSection({ productTotals }: { productTotals: Record<string, {
   );
 }
 
-// ── Order Type Section ────────────────────────────────────────────────────────
+// ── Order Type ────────────────────────────────────────────────────────────────
 function OrderTypeSection({ sales }: { sales: Sale[] }) {
   const servir = sales.filter((s) => s.orderType === "servir" || !s.orderType).length;
   const llevar = sales.filter((s) => s.orderType === "llevar").length;
   const total  = sales.length;
-
   if (total === 0) return null;
-
-  const pctServir = total > 0 ? (servir / total) * 100 : 0;
-  const pctLlevar = total > 0 ? (llevar / total) * 100 : 0;
-
-  const revenueServir = sales
-    .filter((s) => s.orderType === "servir" || !s.orderType)
-    .reduce((acc, s) => acc + s.total, 0);
-  const revenueLlevar = sales
-    .filter((s) => s.orderType === "llevar")
-    .reduce((acc, s) => acc + s.total, 0);
-
+  const revenueServir = sales.filter((s) => s.orderType === "servir" || !s.orderType).reduce((acc, s) => acc + s.total, 0);
+  const revenueLlevar = sales.filter((s) => s.orderType === "llevar").reduce((acc, s) => acc + s.total, 0);
   return (
     <SectionCard title="🍽️ Servir vs 🛍️ Llevar">
       <div className="flex flex-col gap-4">
         {[
-          { label: "Para servir", emoji: "🍽️", count: servir, pct: pctServir, revenue: revenueServir, bar: "bg-amber-500" },
-          { label: "Para llevar", emoji: "🛍️", count: llevar, pct: pctLlevar, revenue: revenueLlevar, bar: "bg-teal-500" },
+          { label: "Para servir", emoji: "🍽️", count: servir, pct: (servir/total)*100, revenue: revenueServir, bar: "bg-amber-500" },
+          { label: "Para llevar", emoji: "🛍️", count: llevar, pct: (llevar/total)*100, revenue: revenueLlevar, bar: "bg-teal-500" },
         ].map(({ label, emoji, count, pct, revenue, bar }) => (
           <div key={label} className="flex flex-col gap-1.5">
             <div className="flex justify-between items-center text-xs">
@@ -758,85 +382,46 @@ function OrderTypeSection({ sales }: { sales: Sale[] }) {
 // ── Ventas por usuario ────────────────────────────────────────────────────────
 function VentasPorUsuario({ sales }: { sales: Sale[] }) {
   const userMap: Record<string, { displayName: string; count: number; total: number; methods: Record<string, number> }> = {};
-
   for (const sale of sales) {
     const key = sale.soldBy?.userId ?? "__unknown__";
     const name = sale.soldBy?.displayName ?? "Usuario desconocido";
-    if (!userMap[key]) {
-      userMap[key] = { displayName: name, count: 0, total: 0, methods: {} };
-    }
+    if (!userMap[key]) userMap[key] = { displayName: name, count: 0, total: 0, methods: {} };
     userMap[key].count++;
     userMap[key].total += sale.total;
     const m = sale.paymentMethod;
     userMap[key].methods[m] = (userMap[key].methods[m] ?? 0) + 1;
   }
-
   const rows = Object.entries(userMap).sort((a, b) => b[1].total - a[1].total);
-
-  if (rows.length === 0) {
-    return <p className="text-amber-700 text-sm">Sin datos para este período.</p>;
-  }
-
+  if (rows.length === 0) return <p className="text-amber-700 text-sm">Sin datos para este período.</p>;
   const maxTotal = rows[0][1].total || 1;
-
-  const AVATAR_COLORS = [
-    "bg-amber-700 border-amber-600",
-    "bg-blue-800 border-blue-700",
-    "bg-purple-800 border-purple-700",
-    "bg-teal-800 border-teal-700",
-    "bg-rose-800 border-rose-700",
-  ];
-
+  const AVATAR_COLORS = ["bg-amber-700 border-amber-600","bg-blue-800 border-blue-700","bg-purple-800 border-purple-700","bg-teal-800 border-teal-700","bg-rose-800 border-rose-700"];
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-[10px] text-amber-700">
-        Resumen de actividad por cajero en el período seleccionado.
-      </p>
+      <p className="text-[10px] text-amber-700">Resumen de actividad por cajero en el período seleccionado.</p>
       {rows.map(([, data], idx) => {
         const pct = (data.total / maxTotal) * 100;
         const avgTicket = data.count > 0 ? data.total / data.count : 0;
-        const avatarColor = AVATAR_COLORS[idx % AVATAR_COLORS.length];
-        const initial = data.displayName.charAt(0).toUpperCase();
-
         return (
-          <div
-            key={idx}
-            className="bg-amber-900/20 border-2 border-amber-800 rounded-xl p-4 flex flex-col gap-3"
-          >
-            {/* Header */}
+          <div key={idx} className="bg-amber-900/20 border-2 border-amber-800 rounded-xl p-4 flex flex-col gap-3">
             <div className="flex items-center gap-3">
-              <div className={`w-9 h-9 rounded-full border-2 flex items-center justify-center shrink-0 ${avatarColor}`}>
-                <span className="text-sm font-bold text-white">{initial}</span>
+              <div className={`w-9 h-9 rounded-full border-2 flex items-center justify-center shrink-0 ${AVATAR_COLORS[idx % AVATAR_COLORS.length]}`}>
+                <span className="text-sm font-bold text-white">{data.displayName.charAt(0).toUpperCase()}</span>
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-amber-100 truncate">{data.displayName}</p>
-                <p className="text-[10px] text-amber-700">
-                  {data.count} venta{data.count !== 1 ? "s" : ""} · ticket prom. ${avgTicket.toFixed(2)}
-                </p>
+                <p className="text-[10px] text-amber-700">{data.count} venta{data.count !== 1 ? "s" : ""} · ticket prom. ${avgTicket.toFixed(2)}</p>
               </div>
-              <div className="text-right shrink-0">
-                <p className="text-lg font-bold text-amber-400 tabular-nums">${data.total.toFixed(2)}</p>
-              </div>
+              <p className="text-lg font-bold text-amber-400 tabular-nums shrink-0">${data.total.toFixed(2)}</p>
             </div>
-
-            {/* Bar */}
             <div className="h-2 bg-amber-900 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-amber-500 rounded-full transition-all duration-500"
-                style={{ width: `${pct}%` }}
-              />
+              <div className="h-full bg-amber-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
             </div>
-
-            {/* Payment method breakdown */}
             <div className="flex gap-3 flex-wrap">
               {Object.entries(data.methods).map(([method, count]) => {
                 const info = PAYMENT_LABELS[method as PaymentMethod];
                 if (!info) return null;
                 return (
-                  <span
-                    key={method}
-                    className="text-[10px] font-bold uppercase tracking-widest border rounded-full px-2.5 py-0.5 text-amber-300 border-amber-700 bg-amber-900/40"
-                  >
+                  <span key={method} className="text-[10px] font-bold uppercase tracking-widest border rounded-full px-2.5 py-0.5 text-amber-300 border-amber-700 bg-amber-900/40">
                     {info.emoji} {info.label} ×{count}
                   </span>
                 );
@@ -849,14 +434,309 @@ function VentasPorUsuario({ sales }: { sales: Sale[] }) {
   );
 }
 
+// ── Métodos de pago ───────────────────────────────────────────────────────────
+function MetodosPagoSection({ sales, total }: { sales: Sale[]; total: number }) {
+  const byPayment = (["efectivo", "transferencia", "deuna"] as PaymentMethod[]).map((m) => {
+    const f = sales.filter((s) => s.paymentMethod === m);
+    return { method: m, count: f.length, total: f.reduce((s, x) => s + x.total, 0) };
+  });
+  return (
+    <div className="flex flex-col gap-3">
+      {byPayment.map(({ method, count, total: t }) => {
+        const pct = total > 0 ? (t / total) * 100 : 0;
+        const { label, emoji, bar } = PAYMENT_LABELS[method];
+        return (
+          <div key={method} className="flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-amber-200 font-semibold">{emoji} {label}</span>
+              <span className="text-amber-500 font-bold tabular-nums">
+                ${t.toFixed(2)} <span className="text-amber-700">· {count} pedido{count !== 1 ? "s" : ""} · {pct.toFixed(0)}%</span>
+              </span>
+            </div>
+            <div className="h-2 bg-amber-900 rounded-full overflow-hidden">
+              <div className={`h-full ${bar} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── VariantesSection — vendidas + stock restante ───────────────────────────────
+function VariantesSection({ sales, products }: { sales: Sale[]; products: Product[] }) {
+  // Count sold qty per item name
+  const soldByName: Record<string, number> = {};
+  for (const sale of sales) {
+    for (const item of sale.items) {
+      soldByName[item.name] = (soldByName[item.name] ?? 0) + item.quantity;
+    }
+  }
+
+  // Build rows: for each food product, for each variant, get sold + remaining stock
+  type VariantRow = {
+    productName: string;
+    variantLabel: string;
+    variantKey: string;
+    sold: number;
+    stockRemaining: number | null; // null = untracked
+  };
+
+  const rows: VariantRow[] = [];
+
+  for (const product of products) {
+    if (product.category !== "Comida") continue;
+
+    const sizes = Object.entries(product.sizeLabels ?? {}).filter(([sk]) => {
+      const tiers = product.tieredPrices?.[sk];
+      return Array.isArray(tiers) && tiers.length > 0;
+    });
+    const fillings = Object.entries(product.fillingLabels ?? {});
+
+    const combinations: Array<{ variantKey: string; sizeLabel: string; fillingLabel: string | null }> = [];
+    if (fillings.length === 0) {
+      sizes.forEach(([sk, sl]) => combinations.push({ variantKey: `${sk}-none`, sizeLabel: sl, fillingLabel: null }));
+    } else {
+      sizes.forEach(([sk, sl]) =>
+        fillings.forEach(([fk, fl]) =>
+          combinations.push({ variantKey: `${sk}-${fk}`, sizeLabel: sl, fillingLabel: fl })
+        )
+      );
+    }
+
+    for (const { variantKey, sizeLabel, fillingLabel } of combinations) {
+      const label = fillingLabel ? `${sizeLabel} · ${fillingLabel}` : sizeLabel;
+      // Match sold items: "Empanada Grande Carne" or "Empanada Grande · Carne"
+      // We search all sale item names that start with product.name and contain size/filling labels
+      let sold = 0;
+      const sizeKey = variantKey.split("-")[0];
+      const fillingKey = variantKey.split("-").slice(1).join("-");
+
+      for (const [itemName, qty] of Object.entries(soldByName)) {
+        if (!itemName.startsWith(product.name)) continue;
+        const suffix = itemName.slice(product.name.length).toLowerCase();
+        const sizeMatch = suffix.includes(sizeKey.toLowerCase()) || sizeKey === "single";
+        const fillMatch = fillingKey === "none" || suffix.includes(fillingKey.toLowerCase());
+        if (sizeMatch && fillMatch) sold += qty;
+      }
+
+      const stockRaw = product.variantStock?.[variantKey];
+      const stockRemaining = stockRaw !== undefined ? stockRaw : null;
+
+      // Only show if sold > 0 OR stock is tracked
+      if (sold > 0 || stockRemaining !== null) {
+        rows.push({ productName: product.name, variantLabel: label, variantKey, sold, stockRemaining });
+      }
+    }
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-amber-700 text-sm">Sin datos de variantes para este período.</p>
+        <p className="text-[10px] text-amber-800">Configura el stock por variante en Inventario para ver esta sección.</p>
+      </div>
+    );
+  }
+
+  const maxSold = Math.max(...rows.map((r) => r.sold), 1);
+
+  const BAR_COLORS = ["bg-amber-500","bg-orange-500","bg-red-500","bg-yellow-500","bg-lime-500","bg-teal-500","bg-blue-500","bg-violet-500","bg-pink-500"];
+
+  function stockBadge(remaining: number | null) {
+    if (remaining === null) return <span className="text-[10px] text-amber-800 italic">Sin seguimiento</span>;
+    if (remaining === 0) return <span className="text-[10px] font-bold text-red-400 bg-red-900/30 border border-red-800 rounded-full px-2 py-0.5">Agotado</span>;
+    if (remaining <= 5) return <span className="text-[10px] font-bold text-orange-400 bg-orange-900/20 border border-orange-800 rounded-full px-2 py-0.5">{remaining} restantes</span>;
+    return <span className="text-[10px] font-bold text-green-400 bg-green-900/20 border border-green-900 rounded-full px-2 py-0.5">{remaining} restantes</span>;
+  }
+
+  // Group by product
+  const byProduct: Record<string, VariantRow[]> = {};
+  for (const row of rows) {
+    if (!byProduct[row.productName]) byProduct[row.productName] = [];
+    byProduct[row.productName].push(row);
+  }
+
+  let colorIdx = 0;
+
+  return (
+    <div className="flex flex-col gap-5">
+      <p className="text-[10px] text-amber-700">Unidades vendidas por variante en el período, con stock actual.</p>
+      {Object.entries(byProduct).map(([productName, productRows]) => (
+        <div key={productName} className="flex flex-col gap-3">
+          <p className="text-xs font-bold text-amber-300 uppercase tracking-widest">{productName}</p>
+          {productRows.map((row) => {
+            const bar = BAR_COLORS[colorIdx % BAR_COLORS.length];
+            colorIdx++;
+            return (
+              <div key={row.variantKey} className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <span className="text-sm text-amber-200 font-semibold">{row.variantLabel}</span>
+                  <div className="flex items-center gap-3">
+                    {stockBadge(row.stockRemaining)}
+                    <span className={`text-sm font-bold tabular-nums ${row.sold > 0 ? "text-amber-400" : "text-amber-800"}`}>
+                      ×{row.sold} vendidas
+                    </span>
+                  </div>
+                </div>
+                <div className="h-2 bg-amber-900/60 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all duration-500 ${bar}`}
+                    style={{ width: `${(row.sold / maxSold) * 100}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      <p className="text-[10px] text-amber-800 text-right pt-1 border-t border-amber-800/40">
+        Total vendidas: {rows.reduce((s, r) => s + r.sold, 0)} unidades
+      </p>
+    </div>
+  );
+}
+
+// ── ConsumoVariantesSection — reemplaza IngredientesSection ───────────────────
+/**
+ * Shows how many units of each food variant were sold in the period,
+ * grouped by product, with current stock remaining.
+ * This replaces the old ingredient-consumption section.
+ */
+function ConsumoVariantesSection({ sales, products }: { sales: Sale[]; products: Product[] }) {
+  // Only show food products that have variantStock configured
+  const foodWithStock = products.filter(
+    (p) => p.category === "Comida" && p.variantStock && Object.values(p.variantStock).some((v) => v > 0)
+  );
+
+  if (foodWithStock.length === 0) {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-amber-700 text-sm">Sin stock configurado para productos de comida.</p>
+        <p className="text-[10px] text-amber-800">Ve a Inventario → edita un producto de comida → configura el stock por variante.</p>
+      </div>
+    );
+  }
+
+  // Count sold per item name suffix
+  const soldByName: Record<string, number> = {};
+  for (const sale of sales) {
+    for (const item of sale.items) {
+      soldByName[item.name] = (soldByName[item.name] ?? 0) + item.quantity;
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <p className="text-[10px] text-amber-700">
+        Stock actual vs unidades vendidas en el período para cada variante.
+      </p>
+      {foodWithStock.map((product) => {
+        const sizes = Object.entries(product.sizeLabels ?? {});
+        const fillings = Object.entries(product.fillingLabels ?? {});
+        const combinations: Array<{ variantKey: string; label: string }> = [];
+        if (fillings.length === 0) {
+          sizes.forEach(([sk, sl]) => combinations.push({ variantKey: `${sk}-none`, label: sl }));
+        } else {
+          sizes.forEach(([sk, sl]) =>
+            fillings.forEach(([fk, fl]) =>
+              combinations.push({ variantKey: `${sk}-${fk}`, label: `${sl} · ${fl}` })
+            )
+          );
+        }
+
+        const rows = combinations.map(({ variantKey, label }) => {
+          const sizeKey = variantKey.split("-")[0];
+          const fillingKey = variantKey.split("-").slice(1).join("-");
+          let sold = 0;
+          for (const [itemName, qty] of Object.entries(soldByName)) {
+            if (!itemName.startsWith(product.name)) continue;
+            const suffix = itemName.slice(product.name.length).toLowerCase();
+            const sizeMatch = suffix.includes(sizeKey.toLowerCase()) || sizeKey === "single";
+            const fillMatch = fillingKey === "none" || suffix.includes(fillingKey.toLowerCase());
+            if (sizeMatch && fillMatch) sold += qty;
+          }
+          const stockRemaining = product.variantStock?.[variantKey] ?? null;
+          return { label, variantKey, sold, stockRemaining };
+        });
+
+        // Only show rows with stock tracked or sold > 0
+        const visibleRows = rows.filter((r) => r.stockRemaining !== null || r.sold > 0);
+        if (visibleRows.length === 0) return null;
+
+        return (
+          <div key={product.id} className="flex flex-col gap-3">
+            <p className="text-xs font-bold text-amber-300 uppercase tracking-widest border-b border-amber-800/60 pb-1">
+              {product.name}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {visibleRows.map(({ label, variantKey, sold, stockRemaining }) => {
+                const tracked = stockRemaining !== null;
+                const stockVal = stockRemaining ?? 0;
+                // Visual: stock bar (remaining) + sold overlay
+                const maxVal = Math.max(stockVal + sold, 1);
+                const stockPct = (stockVal / maxVal) * 100;
+                const soldPct  = (sold / maxVal) * 100;
+
+                return (
+                  <div key={variantKey}
+                    className={`flex flex-col gap-2 rounded-xl border-2 p-3 ${
+                      tracked && stockVal === 0 ? "border-red-900/60 bg-red-950/10"
+                      : tracked && stockVal <= 5 ? "border-orange-900/60 bg-orange-950/10"
+                      : "border-amber-800/60 bg-amber-900/20"
+                    }`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-amber-200">{label}</span>
+                      {tracked ? (
+                        <span className={`text-[10px] font-bold uppercase border rounded-full px-2 py-0.5 ${
+                          stockVal === 0 ? "text-red-400 bg-red-900/40 border-red-800"
+                          : stockVal <= 5 ? "text-orange-400 bg-orange-900/20 border-orange-800"
+                          : "text-green-400 bg-green-900/20 border-green-900"
+                        }`}>
+                          {stockVal === 0 ? "Agotado" : `${stockVal} en stock`}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-amber-800 italic">Sin seguimiento</span>
+                      )}
+                    </div>
+
+                    {/* Dual progress: stock remaining + sold */}
+                    {tracked && (
+                      <div className="flex flex-col gap-1">
+                        <div className="flex gap-1 h-3 rounded-full overflow-hidden bg-amber-950/60">
+                          {/* sold (left, red-amber) */}
+                          <div className="h-full bg-amber-500/70 rounded-l-full transition-all duration-500 shrink-0"
+                            style={{ width: `${soldPct}%` }} />
+                          {/* remaining (right, green) */}
+                          <div className={`h-full rounded-r-full transition-all duration-500 shrink-0 ${
+                            stockVal === 0 ? "bg-red-700/50" : stockVal <= 5 ? "bg-orange-500/70" : "bg-green-500/70"
+                          }`}
+                            style={{ width: `${stockPct}%` }} />
+                        </div>
+                        <div className="flex justify-between text-[9px] text-amber-700">
+                          <span>Vendidas: <span className="font-bold text-amber-400">{sold}</span></span>
+                          <span>Restante: <span className={`font-bold ${stockVal === 0 ? "text-red-400" : stockVal <= 5 ? "text-orange-400" : "text-green-400"}`}>{stockVal}</span></span>
+                        </div>
+                      </div>
+                    )}
+                    {!tracked && sold > 0 && (
+                      <p className="text-[10px] text-amber-600">Vendidas en período: <span className="font-bold text-amber-400">{sold}</span></p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function ReportePage() {
-  const [sales]       = useLocalStorage<Sale[]>      ("abuelo-sales",       []);
-  const [products]    = useLocalStorage<Product[]>   ("abuelo-products",    []);
-  const [ingredients] = useLocalStorage<Ingredient[]>("abuelo-ingredients", []);
+  const [sales]    = useLocalStorage<Sale[]>   ("abuelo-sales",    []);
+  const [products] = useLocalStorage<Product[]>("abuelo-products", []);
   const [period, setPeriod] = useState<Period>("week");
 
-  // Current month as default: "YYYY-MM"
   const nowYM = (() => {
     const n = new Date();
     return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}`;
@@ -864,25 +744,17 @@ export default function ReportePage() {
   const [selectedMonth, setSelectedMonth] = useState<string>(nowYM);
 
   const availableMonths = getAvailableMonths(sales);
-  // Ensure current month is always in the list even if no sales yet
-  const monthOptions = availableMonths.includes(nowYM)
-    ? availableMonths
-    : [nowYM, ...availableMonths];
+  const monthOptions = availableMonths.includes(nowYM) ? availableMonths : [nowYM, ...availableMonths];
 
   const periodSales = getPeriodSales(sales, period, selectedMonth);
   const prevSales   = getPrevPeriodSales(sales, period, selectedMonth);
 
-  const total       = periodSales.reduce((s, x) => s + x.total, 0);
-  const prevTotal   = prevSales.reduce((s, x) => s + x.total, 0);
-  const delivered   = periodSales.filter((s) => s.status === "delivered").length;
-  const pending     = periodSales.filter((s) => s.status !== "delivered").length;
-  const avgTicket   = periodSales.length > 0 ? total / periodSales.length : 0;
-  const prevAvg     = prevSales.length > 0 ? prevTotal / prevSales.length : 0;
-
-  const byPayment = (["efectivo", "transferencia", "deuna"] as PaymentMethod[]).map((m) => {
-    const f = periodSales.filter((s) => s.paymentMethod === m);
-    return { method: m, count: f.length, total: f.reduce((s, x) => s + x.total, 0) };
-  });
+  const total     = periodSales.reduce((s, x) => s + x.total, 0);
+  const prevTotal = prevSales.reduce((s, x) => s + x.total, 0);
+  const delivered = periodSales.filter((s) => s.status === "delivered").length;
+  const pending   = periodSales.filter((s) => s.status !== "delivered").length;
+  const avgTicket = periodSales.length > 0 ? total / periodSales.length : 0;
+  const prevAvg   = prevSales.length > 0 ? prevTotal / prevSales.length : 0;
 
   const productTotals: Record<string, { quantity: number; revenue: number }> = {};
   for (const sale of periodSales)
@@ -892,8 +764,7 @@ export default function ReportePage() {
       productTotals[item.name].revenue  += item.price * item.quantity;
     }
 
-  // Chart config
-  const chartDays      = period === "today" || period === "yesterday" ? 1 : period === "week" ? 7 : period === "month" ? 30 : 14;
+  const chartDays      = period === "today" || period === "yesterday" ? 1 : period === "week" ? 7 : 30;
   const chartEndOffset = period === "yesterday" ? 1 : 0;
 
   const PERIODS: { key: Period; label: string }[] = [
@@ -904,20 +775,19 @@ export default function ReportePage() {
     { key: "all",       label: "Total"  },
   ];
 
-  // Prev month label for "comparativa" title
   const prevMonthLabel = (() => {
     const [y, m] = selectedMonth.split("-").map(Number);
-    const prev = new Date(y, m - 2, 1); // m-2 because month is 1-indexed and we want previous
-    return prev.toLocaleDateString("es-EC", { month: "long", year: "numeric" });
+    return new Date(y, m - 2, 1).toLocaleDateString("es-EC", { month: "long", year: "numeric" });
   })();
 
   const prevLabel: Record<Period, string> = {
-    today:     "ayer",
-    yesterday: "anteayer",
-    week:      "semana pasada",
-    month:     prevMonthLabel,
-    all:       "—",
+    today: "ayer", yesterday: "anteayer", week: "semana pasada",
+    month: prevMonthLabel, all: "—",
   };
+
+  const hasFoodWithVariantStock = products.some(
+    (p) => p.category === "Comida" && p.variantStock && Object.keys(p.variantStock).length > 0
+  );
 
   return (
     <div className="flex flex-col min-h-dvh bg-amber-950/60 font-sans">
@@ -947,21 +817,18 @@ export default function ReportePage() {
           ))}
         </div>
 
-        {/* Month picker — only shown when period === "month" */}
+        {/* Month picker */}
         {period === "month" && (
           <div className="flex flex-col gap-2">
             <p className="text-[10px] uppercase tracking-widest text-yellow-700">Seleccionar mes</p>
             <div className="flex flex-wrap gap-2">
               {monthOptions.map((ym) => (
-                <button
-                  key={ym}
-                  onClick={() => setSelectedMonth(ym)}
+                <button key={ym} onClick={() => setSelectedMonth(ym)}
                   className={`px-4 py-2 rounded-xl border-2 text-xs font-bold uppercase tracking-widest cursor-pointer transition-all capitalize ${
                     selectedMonth === ym
                       ? "border-amber-500 bg-amber-500 text-amber-950"
                       : "border-amber-800 text-amber-600 hover:border-amber-600 hover:text-amber-400 bg-amber-900/20"
-                  }`}
-                >
+                  }`}>
                   {monthLabel(ym)}
                 </button>
               ))}
@@ -969,7 +836,7 @@ export default function ReportePage() {
           </div>
         )}
 
-        {/* KPI cards */}
+        {/* KPIs */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard label="Ventas"       value={String(periodSales.length)} accent="amber"  delta={delta(periodSales.length, prevSales.length)} />
           <StatCard label="Recaudado"    value={`$${total.toFixed(2)}`}     accent="green"  delta={delta(total, prevTotal)} />
@@ -977,16 +844,12 @@ export default function ReportePage() {
           <StatCard label="Pendientes"   value={String(pending)}            accent="purple" sub={`${delivered} entregados`} />
         </div>
 
-        {/* Gráfico de ventas por día */}
+        {/* Gráfico diario */}
         <SectionCard title="📈 Ventas por día">
           {periodSales.length === 0
             ? <p className="text-amber-700 text-sm">Sin datos para este período.</p>
-            : <DailyBarChart
-                sales={periodSales}
-                days={chartDays}
-                endOffset={chartEndOffset}
-                monthYM={period === "month" ? selectedMonth : undefined}
-              />
+            : <DailyBarChart sales={periodSales} days={chartDays} endOffset={chartEndOffset}
+                monthYM={period === "month" ? selectedMonth : undefined} />
           }
         </SectionCard>
 
@@ -1006,49 +869,30 @@ export default function ReportePage() {
 
         {/* Métodos de pago */}
         <SectionCard title="💳 Métodos de pago">
-          <div className="flex flex-col gap-3">
-            {byPayment.map(({ method, count, total: t }) => {
-              const pct = total > 0 ? (t / total) * 100 : 0;
-              const { label, emoji, bar } = PAYMENT_LABELS[method];
-              return (
-                <div key={method} className="flex flex-col gap-1.5">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-amber-200 font-semibold">{emoji} {label}</span>
-                    <span className="text-amber-500 font-bold tabular-nums">
-                      ${t.toFixed(2)} <span className="text-amber-700">· {count} pedido{count !== 1 ? "s" : ""} · {pct.toFixed(0)}%</span>
-                    </span>
-                  </div>
-                  <div className="h-2 bg-amber-900 rounded-full overflow-hidden">
-                    <div className={`h-full ${bar} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <MetodosPagoSection sales={periodSales} total={total} />
         </SectionCard>
 
-        {/* Productos más vendidos */}
+        {/* Top productos */}
         <TopProductsSection productTotals={productTotals} />
 
-        {/* Consumo de ingredientes */}
-        {ingredients.length > 0 && (
-          <SectionCard title="🧂 Consumo de ingredientes (Comida)">
-            <IngredientesSection sales={periodSales} products={products} ingredients={ingredients} />
+        {/* Stock y consumo por variante (reemplaza ingredientes) */}
+        {hasFoodWithVariantStock && (
+          <SectionCard title="📦 Stock y consumo por variante (Comida)">
+            <ConsumoVariantesSection sales={periodSales} products={products} />
           </SectionCard>
         )}
 
-        {/* Variantes vendidas */}
-        {products.some((p) => Object.keys(p.ingredientMap ?? {}).length > 0) && (
-          <SectionCard title="🥟 Combinaciones vendidas (Tamaño · Relleno)">
-            <VariantesSection sales={periodSales} products={products} />
-          </SectionCard>
-        )}
+        {/* Variantes vendidas + stock restante */}
+        <SectionCard title="🥟 Variantes vendidas · stock actual">
+          <VariantesSection sales={periodSales} products={products} />
+        </SectionCard>
+
         {/* Ventas por usuario */}
         <SectionCard title="👤 Ventas por usuario">
           <VentasPorUsuario sales={periodSales} />
         </SectionCard>
-        
-        {/* Historial detallado */}
+
+        {/* Historial */}
         <SectionCard title="📋 Historial detallado">
           <HistorialSection sales={periodSales} />
         </SectionCard>
