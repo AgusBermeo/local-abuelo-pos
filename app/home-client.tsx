@@ -34,7 +34,7 @@ export type Product = {
   /** Food only: stock per variant key ("grande-carne": 20). 0 = untracked */
   variantStock?: Record<string, number>;
   /** @deprecated use variantStock for food */
-  ingredientMap: Record<string, Record<string, number>>;
+  ingredientMap?: Record<string, Record<string, number>>;
   // Bebidas: multiple presentations with individual stock
   drinkSizes?: DrinkSize[];
 };
@@ -284,7 +284,23 @@ export default function HomeClient({ session }: { session: SessionPayload | null
   const editIngredient   = (ing: Ingredient) => setIngredients((prev) => prev.map((i) => i.id === ing.id ? ing : i));
   const deleteIngredient = (id: string) => setIngredients((prev) => prev.filter((i) => i.id !== id));
 
-  const addProduct    = (p: Product) => setProducts((prev) => [...prev, p]);
+  const addProduct = (p: Partial<Product>) =>
+    setProducts((prev) => [
+      ...prev,
+      ({
+        id: p.id ?? Date.now(),
+        name: p.name ?? "",
+        category: p.category ?? "Comida",
+        tieredPrices: p.tieredPrices ?? {},
+        price: p.price,
+        sizeLabels: p.sizeLabels ?? {},
+        fillingLabels: p.fillingLabels ?? {},
+        size: p.size,
+        variantStock: p.variantStock ?? {},
+        ingredientMap: p.ingredientMap ?? {},
+        drinkSizes: p.drinkSizes ?? [],
+      } as Product),
+    ]);
   const editProduct   = (p: Product) => setProducts((prev) => prev.map((x) => x.id === p.id ? p : x));
   const deleteProduct = (id: number) => setProducts((prev) => prev.filter((p) => p.id !== id));
 
