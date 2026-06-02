@@ -50,8 +50,8 @@ function getFoodVariantCap(product: Product, sizeKey: string, fillingKey: string
 }
 
 /** Stock for a drink size. null = untracked. */
-function getDrinkEffectiveCapacity(drinkSize: DrinkSize): number | null {
-  if (drinkSize.stock === 0) return null;
+function getDrinkEffectiveCapacity(drinkSize: DrinkSize, cartQty: number): number | null {
+  if (drinkSize.stock === 0 && cartQty === 0) return null;
   return drinkSize.stock;
 }
 
@@ -120,7 +120,8 @@ export default function Cobrar(props: {
     foodVariantDeductions: FoodVariantDeduction[],
     drinkDeductions: DrinkDeduction[],
     tax: number,
-    orderType: "servir" | "llevar"
+    orderType: "servir" | "llevar" | "delivery",
+    deliveryCost: number
   ) => void;
 }) {
   const [cart, setCart] = useState<CartEntry[]>([]);
@@ -131,7 +132,9 @@ export default function Cobrar(props: {
   const [taxRateInput, setTaxRateInput] = useState<string>("15");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PaymentMethod | null>(null);
-  const [orderType, setOrderType] = useState<"servir" | "llevar" | null>(null);
+  const [orderType, setOrderType] = useState<"servir" | "llevar" | "delivery" | null>(null);
+  const [deliveryCost, setDeliveryCost] = useState<number>(0);
+  const [deliveryCostInput, setDeliveryCostInput] = useState<string>("");
 
   // Selected filling per food product (productId → fillingKey)
   const [selectedFilling, setSelectedFilling] = useState<Record<number, string>>({});
@@ -173,7 +176,7 @@ export default function Cobrar(props: {
     } else {
       const ds = product.drinkSizes?.find((d) => d.key === sizeKey);
       if (ds) {
-        const cap = getDrinkEffectiveCapacity(ds);
+        const cap = getDrinkEffectiveCapacity(ds, cart.find((e) => e.key === key)?.quantity ?? 0);
         if (cap !== null) capped = Math.min(newQty, cap);
       }
     }
@@ -195,7 +198,7 @@ export default function Cobrar(props: {
     } else {
       const ds = product.drinkSizes?.find((d) => d.key === sizeKey);
       if (ds) {
-        const cap = getDrinkEffectiveCapacity(ds);
+        const cap = getDrinkEffectiveCapacity(ds, current);
         if (cap !== null && current >= cap) return;
       }
     }
@@ -240,12 +243,13 @@ export default function Cobrar(props: {
     return getTierPrice(product, entry.sizeKey, totalQtyForSize);
   }
 
-  const subtotal       = cart.reduce((s, e) => s + getEntryPrice(e) * e.quantity, 0);
-  const discountAmount = Math.min(discount, subtotal);
-  const afterDiscount  = subtotal - discountAmount;
-  const taxAmount      = taxEnabled ? afterDiscount * (taxRate / 100) : 0;
-  const total          = afterDiscount + taxAmount;
-  const totalItems     = cart.reduce((s, e) => s + e.quantity, 0);
+  const subtotal            = cart.reduce((s, e) => s + getEntryPrice(e) * e.quantity, 0);
+  const discountAmount      = Math.min(discount, subtotal);
+  const afterDiscount       = subtotal - discountAmount;
+  const taxAmount           = taxEnabled ? afterDiscount * (taxRate / 100) : 0;
+  const effectiveDeliveryCost = orderType === "delivery" ? deliveryCost : 0;
+  const total               = afterDiscount + taxAmount + effectiveDeliveryCost;
+  const totalItems          = cart.reduce((s, e) => s + e.quantity, 0);
 
   // ── Payment ─────────────────────────────────────────────────────────────────
 
@@ -293,7 +297,8 @@ export default function Cobrar(props: {
       saleItems, total, selectedPayment,
       foodVariantDeductions, drinkDeductions,
       taxEnabled ? taxAmount : 0,
-      orderType
+      orderType,
+      orderType === "delivery" ? deliveryCost : 0
     );
     setCart([]);
     setSelectedFilling({});
@@ -303,6 +308,8 @@ export default function Cobrar(props: {
     setShowPaymentModal(false);
     setSelectedPayment(null);
     setOrderType(null);
+    setDeliveryCost(0);
+    setDeliveryCostInput("");
   };
 
   const clearCart = () => {
@@ -312,6 +319,8 @@ export default function Cobrar(props: {
     setShowDiscount(false);
     setTaxEnabled(false);
     setOrderType(null);
+    setDeliveryCost(0);
+    setDeliveryCostInput("");
   };
 
   // ── FoodProductCard ─────────────────────────────────────────────────────────
@@ -501,7 +510,7 @@ export default function Cobrar(props: {
             const entry = cart.find((e) => e.key === ck);
             const qty = entry?.quantity ?? 0;
 
-            const cap = getDrinkEffectiveCapacity(ds);
+            const cap = getDrinkEffectiveCapacity(ds, qty);
             const outOfStock = cap !== null && cap === 0 && qty === 0;
             const atMax      = cap !== null && qty >= cap;
             const stockTracked = cap !== null;
@@ -743,7 +752,7 @@ export default function Cobrar(props: {
 
         {/* Totals */}
         <div ref={totalBlockRef} className="mt-4 flex flex-col gap-1">
-          {(discount > 0 || taxEnabled) && (
+          {(discount > 0 || taxEnabled || effectiveDeliveryCost > 0) && (
             <div className="flex justify-between text-sm text-amber-700">
               <span>Subtotal</span><span>${subtotal.toFixed(2)}</span>
             </div>
@@ -756,6 +765,11 @@ export default function Cobrar(props: {
           {taxEnabled && (
             <div className="flex justify-between text-sm text-blue-400">
               <span>IVA ({taxRate}%)</span><span>+${taxAmount.toFixed(2)}</span>
+            </div>
+          )}
+          {effectiveDeliveryCost > 0 && (
+            <div className="flex justify-between text-sm text-teal-400">
+              <span>🛵 Envío</span><span>+${effectiveDeliveryCost.toFixed(2)}</span>
             </div>
           )}
           <div className="flex justify-between items-center border-t border-amber-800/40 pt-1 mt-0.5">
@@ -771,7 +785,7 @@ export default function Cobrar(props: {
               Cancelar
             </button>
             <button
-              onClick={() => { setSelectedPayment(null); setOrderType(null); setShowPaymentModal(true); }}
+              onClick={() => { setSelectedPayment(null); setOrderType(null); setDeliveryCost(0); setDeliveryCostInput(""); setShowPaymentModal(true); }}
               className="flex-2 py-3 px-6 rounded-lg font-bold uppercase tracking-widest text-sm bg-amber-500 hover:bg-amber-400 text-amber-950 cursor-pointer transition-colors">
               Cobrar ${total.toFixed(2)}
             </button>
@@ -783,7 +797,7 @@ export default function Cobrar(props: {
       {showPaymentModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowPaymentModal(false)} />
-          <div className="relative bg-amber-950 border-2 border-amber-600 rounded-xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-5">
+          <div className="relative bg-amber-950 border-2 border-amber-600 rounded-xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center gap-3">
               <span className="text-2xl">💳</span>
               <div>
@@ -794,26 +808,72 @@ export default function Cobrar(props: {
               </div>
             </div>
 
+            {/* Order type selector */}
             <div className="flex flex-col gap-2">
               <p className="text-[10px] uppercase tracking-widest text-yellow-700">¿Cómo se sirve?</p>
               <div className="flex gap-2">
                 {([
-                  { value: "servir", label: "Para servir", emoji: "🍽️" },
-                  { value: "llevar", label: "Para llevar", emoji: "🛍️" },
+                  { value: "servir",   label: "Para servir", emoji: "🍽️" },
+                  { value: "llevar",   label: "Para llevar", emoji: "🛍️" },
+                  { value: "delivery", label: "Delivery",    emoji: "🛵" },
                 ] as const).map((opt) => (
-                  <button key={opt.value} onClick={() => setOrderType(opt.value)}
-                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-bold text-sm cursor-pointer transition-all ${
+                  <button
+                    key={opt.value}
+                    onClick={() => {
+                      setOrderType(opt.value);
+                      if (opt.value !== "delivery") {
+                        setDeliveryCost(0);
+                        setDeliveryCostInput("");
+                      }
+                    }}
+                    className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border-2 font-bold text-xs cursor-pointer transition-all ${
                       orderType === opt.value
                         ? "border-amber-500 bg-amber-900/60 text-amber-400"
                         : "border-amber-800 hover:border-amber-600 bg-amber-900/20 text-amber-700"
-                    }`}>
-                    <span>{opt.emoji}</span>
+                    }`}
+                  >
+                    <span className="text-lg leading-none">{opt.emoji}</span>
                     {opt.label}
                   </button>
                 ))}
               </div>
+
+              {/* Delivery cost field */}
+              {orderType === "delivery" && (
+                <div className="flex flex-col gap-1.5 mt-1">
+                  <label className="text-[10px] uppercase tracking-widest text-yellow-700">
+                    Costo de envío
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500 text-sm font-bold pointer-events-none">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={deliveryCostInput}
+                      onChange={(e) => {
+                        setDeliveryCostInput(e.target.value);
+                        const v = parseFloat(e.target.value);
+                        setDeliveryCost(isNaN(v) || v < 0 ? 0 : v);
+                      }}
+                      placeholder="0.00"
+                      autoFocus
+                      className="w-full pl-8 bg-amber-950/70 border-2 border-amber-800/70 focus:border-amber-500 rounded-xl py-2.5 pr-4 text-amber-100 text-sm placeholder:text-amber-800 focus:outline-none transition-colors"
+                    />
+                  </div>
+                  {deliveryCost > 0 && (
+                    <p className="text-[10px] text-amber-600">
+                      Total con envío:{" "}
+                      <span className="font-bold text-amber-400">
+                        ${(afterDiscount + taxAmount + deliveryCost).toFixed(2)}
+                      </span>
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
+            {/* Payment method */}
             <div className="flex flex-col gap-2">
               <p className="text-[10px] uppercase tracking-widest text-yellow-700">Forma de pago</p>
               <div className="flex flex-col gap-2">
@@ -872,7 +932,7 @@ export default function Cobrar(props: {
               </svg>
             </div>
             <div className="flex items-center gap-3">
-              {(discount > 0 || taxEnabled) && <span className="text-xs text-amber-700 line-through">${subtotal.toFixed(2)}</span>}
+              {(discount > 0 || taxEnabled || effectiveDeliveryCost > 0) && <span className="text-xs text-amber-700 line-through">${subtotal.toFixed(2)}</span>}
               <span className="text-2xl font-bold text-amber-400">${total.toFixed(2)}</span>
             </div>
           </button>

@@ -18,7 +18,8 @@ type Sale = {
   status?: "pending" | "delivered";
   paymentMethod?: PaymentMethod;
   tax?: number;
-  orderType?: "servir" | "llevar";
+  orderType?: "servir" | "llevar" | "delivery";
+  deliveryCost?: number;
   soldBy?: { userId: string; displayName: string };
 };
 
@@ -26,6 +27,12 @@ const PAYMENT_LABELS: Record<PaymentMethod, { label: string; emoji: string; clas
   efectivo:      { label: "Efectivo",      emoji: "💵", classes: "text-green-400 bg-green-900/30 border-green-800" },
   transferencia: { label: "Transferencia", emoji: "🏦", classes: "text-blue-400 bg-blue-900/30 border-blue-800" },
   deuna:         { label: "De Una",        emoji: "📱", classes: "text-purple-400 bg-purple-900/30 border-purple-800" },
+};
+
+const ORDER_TYPE_LABELS = {
+  servir:   { label: "Para servir", emoji: "🍽️" },
+  llevar:   { label: "Para llevar", emoji: "🛍️" },
+  delivery: { label: "Delivery",    emoji: "🛵" },
 };
 
 function getEmoji(name: string) {
@@ -334,6 +341,8 @@ export default function Ventas({
             const payment = sale.paymentMethod ? PAYMENT_LABELS[sale.paymentMethod] : null;
             const hasTax = typeof sale.tax === "number" && sale.tax > 0;
             const subtotalBeforeTax = hasTax ? sale.total - sale.tax! : null;
+            const orderTypeInfo = sale.orderType ? ORDER_TYPE_LABELS[sale.orderType] : null;
+            const hasDeliveryCost = typeof sale.deliveryCost === "number" && sale.deliveryCost > 0;
 
             return (
               <div
@@ -411,9 +420,9 @@ export default function Ventas({
                         {payment.emoji} {payment.label}
                       </span>
                     )}
-                    {sale.orderType && (
+                    {orderTypeInfo && (
                       <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-400 bg-amber-900/30 border border-amber-700 rounded-full px-3 py-1">
-                        {sale.orderType === "servir" ? "🍽️ Para servir" : "🛍️ Para llevar"}
+                        {orderTypeInfo.emoji} {orderTypeInfo.label}
                       </span>
                     )}
                   </div>
@@ -447,17 +456,27 @@ export default function Ventas({
                   ))}
                 </div>
 
-                {/* IVA breakdown */}
-                {hasTax && (
+                {/* IVA + delivery breakdown */}
+                {(hasTax || hasDeliveryCost) && (
                   <div className="mt-2 pt-2 border-t border-amber-800/40 flex flex-col gap-0.5">
-                    <div className="flex justify-between text-xs text-amber-700">
-                      <span>Subtotal</span>
-                      <span>${subtotalBeforeTax!.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs text-blue-400">
-                      <span>IVA incluido</span>
-                      <span>+${sale.tax!.toFixed(2)}</span>
-                    </div>
+                    {hasTax && (
+                      <>
+                        <div className="flex justify-between text-xs text-amber-700">
+                          <span>Subtotal</span>
+                          <span>${subtotalBeforeTax!.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs text-blue-400">
+                          <span>IVA incluido</span>
+                          <span>+${sale.tax!.toFixed(2)}</span>
+                        </div>
+                      </>
+                    )}
+                    {hasDeliveryCost && (
+                      <div className="flex justify-between text-xs text-teal-400">
+                        <span>🛵 Envío</span>
+                        <span>+${sale.deliveryCost!.toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-xs font-bold text-amber-400 pt-0.5">
                       <span>Total</span>
                       <span>${sale.total.toFixed(2)}</span>

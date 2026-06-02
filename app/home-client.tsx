@@ -175,7 +175,8 @@ export type Sale = {
   id: number; date: Date; items: OrderItem[];
   total: number; status: "pending" | "delivered"; paymentMethod: PaymentMethod;
   tax?: number;
-  orderType?: "servir" | "llevar";
+  orderType?: "servir" | "llevar" | "delivery";
+  deliveryCost?: number;
   /** @deprecated */
   deductions?: IngredientDeduction[];
   drinkDeductions?: DrinkDeduction[];
@@ -251,9 +252,10 @@ export default function HomeClient({ session }: { session: SessionPayload | null
     foodVariantDeductions: FoodVariantDeduction[],
     drinkDeductions: DrinkDeduction[],
     tax: number = 0,
-    orderType: "servir" | "llevar" = "servir"
+    orderType: "servir" | "llevar" | "delivery" = "servir",
+    deliveryCost: number = 0
   ) => {
-    const isServir = orderType === "servir";
+    const isServir = orderType === "servir" || orderType === "delivery";
 
     setSales((prev) => [
       {
@@ -265,6 +267,7 @@ export default function HomeClient({ session }: { session: SessionPayload | null
         paymentMethod,
         tax,
         orderType,
+        deliveryCost: orderType === "delivery" ? deliveryCost : undefined,
         soldBy: session
           ? { userId: session.userId, displayName: session.displayName }
           : undefined,

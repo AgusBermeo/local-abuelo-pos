@@ -10,7 +10,8 @@ type PaymentMethod = "efectivo" | "transferencia" | "deuna";
 type Sale = {
   id: number; date: Date; items: OrderItem[];
   total: number; status: "pending" | "delivered"; paymentMethod: PaymentMethod;
-  orderType?: "servir" | "llevar";
+  orderType?: "servir" | "llevar" | "delivery";
+  deliveryCost?: number;
   soldBy?: { userId: string; displayName: string };
 };
 type DrinkSize = { key: string; label: string; price: number; stock: number };
@@ -242,12 +243,20 @@ function HistorialSection({ sales }: { sales: Sale[] }) {
   const [expanded, setExpanded] = useState<number | null>(null);
   const sorted = [...sales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 20);
   if (sorted.length === 0) return <p className="text-amber-700 text-sm">Sin ventas en este período.</p>;
+
+  const ORDER_TYPE_LABELS = {
+    servir:   { emoji: "🍽️", label: "Servir" },
+    llevar:   { emoji: "🛍️", label: "Llevar" },
+    delivery: { emoji: "🛵", label: "Delivery" },
+  };
+
   return (
     <div className="flex flex-col gap-2">
       {sorted.map((sale) => {
         const isOpen = expanded === sale.id;
         const pay = PAYMENT_LABELS[sale.paymentMethod] ?? { emoji: "?", label: "—" };
         const isDelivered = sale.status === "delivered";
+        const orderTypeInfo = sale.orderType ? ORDER_TYPE_LABELS[sale.orderType] : null;
         return (
           <div key={sale.id}
             className={`border rounded-lg overflow-hidden transition-colors cursor-pointer ${isOpen ? "border-amber-600 bg-amber-900/40" : "border-amber-800 bg-amber-900/20 hover:border-amber-700"}`}
@@ -262,9 +271,9 @@ function HistorialSection({ sales }: { sales: Sale[] }) {
                   </span>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-[10px] text-amber-700 uppercase">{pay.label}</span>
-                    {sale.orderType && (
+                    {orderTypeInfo && (
                       <span className="text-[10px] text-amber-600 uppercase">
-                        · {sale.orderType === "servir" ? "🍽️ Servir" : "🛍️ Llevar"}
+                        · {orderTypeInfo.emoji} {orderTypeInfo.label}
                       </span>
                     )}
                   </div>
@@ -286,6 +295,12 @@ function HistorialSection({ sales }: { sales: Sale[] }) {
                     <span className="text-amber-500 tabular-nums font-semibold">${(item.price * item.quantity).toFixed(2)}</span>
                   </div>
                 ))}
+                {typeof sale.deliveryCost === "number" && sale.deliveryCost > 0 && (
+                  <div className="flex justify-between text-xs pt-1 border-t border-amber-800/40">
+                    <span className="text-teal-400">🛵 Envío</span>
+                    <span className="text-teal-400 font-semibold tabular-nums">+${sale.deliveryCost.toFixed(2)}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -348,18 +363,23 @@ function TopProductsSection({ productTotals }: { productTotals: Record<string, {
 
 // ── Order Type ────────────────────────────────────────────────────────────────
 function OrderTypeSection({ sales }: { sales: Sale[] }) {
-  const servir = sales.filter((s) => s.orderType === "servir" || !s.orderType).length;
-  const llevar = sales.filter((s) => s.orderType === "llevar").length;
-  const total  = sales.length;
+  const servir   = sales.filter((s) => s.orderType === "servir" || !s.orderType).length;
+  const llevar   = sales.filter((s) => s.orderType === "llevar").length;
+  const delivery = sales.filter((s) => s.orderType === "delivery").length;
+  const total    = sales.length;
   if (total === 0) return null;
-  const revenueServir = sales.filter((s) => s.orderType === "servir" || !s.orderType).reduce((acc, s) => acc + s.total, 0);
-  const revenueLlevar = sales.filter((s) => s.orderType === "llevar").reduce((acc, s) => acc + s.total, 0);
+
+  const revenueServir   = sales.filter((s) => s.orderType === "servir" || !s.orderType).reduce((acc, s) => acc + s.total, 0);
+  const revenueLlevar   = sales.filter((s) => s.orderType === "llevar").reduce((acc, s) => acc + s.total, 0);
+  const revenueDelivery = sales.filter((s) => s.orderType === "delivery").reduce((acc, s) => acc + s.total, 0);
+
   return (
-    <SectionCard title="🍽️ Servir vs 🛍️ Llevar">
+    <SectionCard title="🍽️ Tipo de pedido">
       <div className="flex flex-col gap-4">
         {[
-          { label: "Para servir", emoji: "🍽️", count: servir, pct: (servir/total)*100, revenue: revenueServir, bar: "bg-amber-500" },
-          { label: "Para llevar", emoji: "🛍️", count: llevar, pct: (llevar/total)*100, revenue: revenueLlevar, bar: "bg-teal-500" },
+          { label: "Para servir", emoji: "🍽️", count: servir,   pct: (servir/total)*100,   revenue: revenueServir,   bar: "bg-amber-500" },
+          { label: "Para llevar", emoji: "🛍️", count: llevar,   pct: (llevar/total)*100,   revenue: revenueLlevar,   bar: "bg-teal-500"  },
+          { label: "Delivery",    emoji: "🛵", count: delivery, pct: (delivery/total)*100, revenue: revenueDelivery, bar: "bg-blue-500"  },
         ].map(({ label, emoji, count, pct, revenue, bar }) => (
           <div key={label} className="flex flex-col gap-1.5">
             <div className="flex justify-between items-center text-xs">
@@ -463,9 +483,8 @@ function MetodosPagoSection({ sales, total }: { sales: Sale[]; total: number }) 
   );
 }
 
-// ── VariantesSection — vendidas + stock restante ───────────────────────────────
+// ── VariantesSection ──────────────────────────────────────────────────────────
 function VariantesSection({ sales, products }: { sales: Sale[]; products: Product[] }) {
-  // Count sold qty per item name
   const soldByName: Record<string, number> = {};
   for (const sale of sales) {
     for (const item of sale.items) {
@@ -473,13 +492,12 @@ function VariantesSection({ sales, products }: { sales: Sale[]; products: Produc
     }
   }
 
-  // Build rows: for each food product, for each variant, get sold + remaining stock
   type VariantRow = {
     productName: string;
     variantLabel: string;
     variantKey: string;
     sold: number;
-    stockRemaining: number | null; // null = untracked
+    stockRemaining: number | null;
   };
 
   const rows: VariantRow[] = [];
@@ -506,8 +524,6 @@ function VariantesSection({ sales, products }: { sales: Sale[]; products: Produc
 
     for (const { variantKey, sizeLabel, fillingLabel } of combinations) {
       const label = fillingLabel ? `${sizeLabel} · ${fillingLabel}` : sizeLabel;
-      // Match sold items: "Empanada Grande Carne" or "Empanada Grande · Carne"
-      // We search all sale item names that start with product.name and contain size/filling labels
       let sold = 0;
       const sizeKey = variantKey.split("-")[0];
       const fillingKey = variantKey.split("-").slice(1).join("-");
@@ -523,7 +539,6 @@ function VariantesSection({ sales, products }: { sales: Sale[]; products: Produc
       const stockRaw = product.variantStock?.[variantKey];
       const stockRemaining = stockRaw !== undefined ? stockRaw : null;
 
-      // Only show if sold > 0 OR stock is tracked
       if (sold > 0 || stockRemaining !== null) {
         rows.push({ productName: product.name, variantLabel: label, variantKey, sold, stockRemaining });
       }
@@ -540,7 +555,6 @@ function VariantesSection({ sales, products }: { sales: Sale[]; products: Produc
   }
 
   const maxSold = Math.max(...rows.map((r) => r.sold), 1);
-
   const BAR_COLORS = ["bg-amber-500","bg-orange-500","bg-red-500","bg-yellow-500","bg-lime-500","bg-teal-500","bg-blue-500","bg-violet-500","bg-pink-500"];
 
   function stockBadge(remaining: number | null) {
@@ -550,7 +564,6 @@ function VariantesSection({ sales, products }: { sales: Sale[]; products: Produc
     return <span className="text-[10px] font-bold text-green-400 bg-green-900/20 border border-green-900 rounded-full px-2 py-0.5">{remaining} restantes</span>;
   }
 
-  // Group by product
   const byProduct: Record<string, VariantRow[]> = {};
   for (const row of rows) {
     if (!byProduct[row.productName]) byProduct[row.productName] = [];
@@ -595,14 +608,8 @@ function VariantesSection({ sales, products }: { sales: Sale[]; products: Produc
   );
 }
 
-// ── ConsumoVariantesSection — reemplaza IngredientesSection ───────────────────
-/**
- * Shows how many units of each food variant were sold in the period,
- * grouped by product, with current stock remaining.
- * This replaces the old ingredient-consumption section.
- */
+// ── ConsumoVariantesSection ───────────────────────────────────────────────────
 function ConsumoVariantesSection({ sales, products }: { sales: Sale[]; products: Product[] }) {
-  // Only show food products that have variantStock configured
   const foodWithStock = products.filter(
     (p) => p.category === "Comida" && p.variantStock && Object.values(p.variantStock).some((v) => v > 0)
   );
@@ -616,7 +623,6 @@ function ConsumoVariantesSection({ sales, products }: { sales: Sale[]; products:
     );
   }
 
-  // Count sold per item name suffix
   const soldByName: Record<string, number> = {};
   for (const sale of sales) {
     for (const item of sale.items) {
@@ -658,7 +664,6 @@ function ConsumoVariantesSection({ sales, products }: { sales: Sale[]; products:
           return { label, variantKey, sold, stockRemaining };
         });
 
-        // Only show rows with stock tracked or sold > 0
         const visibleRows = rows.filter((r) => r.stockRemaining !== null || r.sold > 0);
         if (visibleRows.length === 0) return null;
 
@@ -671,7 +676,6 @@ function ConsumoVariantesSection({ sales, products }: { sales: Sale[]; products:
               {visibleRows.map(({ label, variantKey, sold, stockRemaining }) => {
                 const tracked = stockRemaining !== null;
                 const stockVal = stockRemaining ?? 0;
-                // Visual: stock bar (remaining) + sold overlay
                 const maxVal = Math.max(stockVal + sold, 1);
                 const stockPct = (stockVal / maxVal) * 100;
                 const soldPct  = (sold / maxVal) * 100;
@@ -698,14 +702,11 @@ function ConsumoVariantesSection({ sales, products }: { sales: Sale[]; products:
                       )}
                     </div>
 
-                    {/* Dual progress: stock remaining + sold */}
                     {tracked && (
                       <div className="flex flex-col gap-1">
                         <div className="flex gap-1 h-3 rounded-full overflow-hidden bg-amber-950/60">
-                          {/* sold (left, red-amber) */}
                           <div className="h-full bg-amber-500/70 rounded-l-full transition-all duration-500 shrink-0"
                             style={{ width: `${soldPct}%` }} />
-                          {/* remaining (right, green) */}
                           <div className={`h-full rounded-r-full transition-all duration-500 shrink-0 ${
                             stockVal === 0 ? "bg-red-700/50" : stockVal <= 5 ? "bg-orange-500/70" : "bg-green-500/70"
                           }`}
@@ -864,7 +865,7 @@ export default function ReportePage() {
           </SectionCard>
         )}
 
-        {/* Servir vs Llevar */}
+        {/* Tipo de pedido */}
         {periodSales.length > 0 && <OrderTypeSection sales={periodSales} />}
 
         {/* Métodos de pago */}
@@ -875,7 +876,7 @@ export default function ReportePage() {
         {/* Top productos */}
         <TopProductsSection productTotals={productTotals} />
 
-        {/* Stock y consumo por variante (reemplaza ingredientes) */}
+        {/* Stock y consumo por variante */}
         {hasFoodWithVariantStock && (
           <SectionCard title="📦 Stock y consumo por variante (Comida)">
             <ConsumoVariantesSection sales={periodSales} products={products} />
