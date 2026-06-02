@@ -196,6 +196,9 @@ export default function HomeClient({ session }: { session: SessionPayload | null
   const canManageSales = userRole === "superadmin" || userRole === "admin";
   const canManageInventory = userRole === "superadmin" || userRole === "admin";
 
+  // Conteo de pedidos pendientes
+  const pendingCount = sales.filter((s) => s.status === "pending" || !s.status).length;
+
   const normalizedProducts = products.map((product) => ({
     ...normalizeDrinkSizes({
       ...product,
@@ -354,6 +357,9 @@ export default function HomeClient({ session }: { session: SessionPayload | null
   const foodProducts  = normalizedProducts.filter((p) => p.category === "Comida");
   const drinkProducts = normalizedProducts.filter((p) => p.category === "Bebida");
 
+  // Ir a la pestaña de Ventas desde la campana
+  const handleBellClick = () => setActiveTab(1);
+
   const TABS = [
     {
       label: "🛒 Cobrar",
@@ -395,7 +401,11 @@ export default function HomeClient({ session }: { session: SessionPayload | null
 
   return (
     <div className="flex flex-col flex-1 min-h-dvh font-sans bg-amber-950/60">
-      <Header session={session} />
+      <Header
+        session={session}
+        pendingCount={pendingCount}
+        onBellClick={handleBellClick}
+      />
       <Tabs tabs={TABS} activeTab={activeTab} setActiveTab={setActiveTab} />
       <div className="flex justify-center w-full md:px-6 px-3 pt-6 pb-4">
         {TABS[activeTab].content}

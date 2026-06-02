@@ -1,8 +1,5 @@
 /**
- * app/components/header.tsx  (versión con sesión)
- *
- * Muestra el usuario actual y un botón de cerrar sesión.
- * La sesión se pasa como prop desde el Server Component padre (app/page.tsx).
+ * app/components/header.tsx  (versión con sesión + notificación de pendientes)
  */
 
 "use client";
@@ -19,7 +16,15 @@ const ROLE_LABELS: Record<UserRole, string> = {
   cajero:     "Cajero",
 };
 
-export default function Header({ session }: { session: SessionPayload | null }) {
+export default function Header({
+  session,
+  pendingCount = 0,
+  onBellClick,
+}: {
+  session: SessionPayload | null;
+  pendingCount?: number;
+  onBellClick?: () => void;
+}) {
   const [loggingOut, startLogout] = useTransition();
 
   const handleLogout = () => {
@@ -41,17 +46,37 @@ export default function Header({ session }: { session: SessionPayload | null }) 
       <div className="flex flex-col items-end gap-2 mt-3 sm:mt-0">
         {session ? (
           <>
-            <div className="flex items-center gap-2">
-              <div className="flex flex-col items-end">
-                <span className="text-sm font-semibold text-amber-300">{session.displayName}</span>
-                <span className="text-[10px] uppercase tracking-widest text-amber-700">
-                  {ROLE_LABELS[session.role]}
-                </span>
-              </div>
-              <div className="w-8 h-8 rounded-full bg-amber-700/40 border border-amber-600 flex items-center justify-center">
-                <span className="text-xs font-bold text-amber-300">
-                  {session.displayName.charAt(0).toUpperCase()}
-                </span>
+            <div className="flex items-center gap-3">
+              {/* Campana de pedidos pendientes */}
+              {onBellClick && (
+                <button
+                  onClick={onBellClick}
+                  className="relative w-9 h-9 flex items-center justify-center rounded-lg border border-amber-800 hover:border-amber-600 text-amber-700 hover:text-amber-400 transition-colors cursor-pointer"
+                  title={pendingCount > 0 ? `${pendingCount} pedido${pendingCount !== 1 ? "s" : ""} pendiente${pendingCount !== 1 ? "s" : ""}` : "Sin pedidos pendientes"}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
+                  </svg>
+                  {pendingCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-black px-1 leading-none shadow-lg shadow-red-900/50 animate-pulse">
+                      {pendingCount > 99 ? "99+" : pendingCount}
+                    </span>
+                  )}
+                </button>
+              )}
+
+              <div className="flex items-center gap-2">
+                <div className="flex flex-col items-end">
+                  <span className="text-sm font-semibold text-amber-300">{session.displayName}</span>
+                  <span className="text-[10px] uppercase tracking-widest text-amber-700">
+                    {ROLE_LABELS[session.role]}
+                  </span>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-amber-700/40 border border-amber-600 flex items-center justify-center">
+                  <span className="text-xs font-bold text-amber-300">
+                    {session.displayName.charAt(0).toUpperCase()}
+                  </span>
+                </div>
               </div>
             </div>
 
