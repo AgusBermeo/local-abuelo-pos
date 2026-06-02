@@ -15,9 +15,8 @@ import { makeCartKey } from "./types";
  */
 function getDrinkEffectiveCapacity(
   stock: number,
-  cartQty: number,
 ): number | null {
-  if (stock === 0 && cartQty === 0) return null;
+  if (stock === 0) return null;
   return stock;
 }
 
@@ -51,7 +50,7 @@ export default function DrinkProductCard({
           const ck  = makeCartKey(product.id, ds.key, "none");
           const qty = cart.find((e) => e.key === ck)?.quantity ?? 0;
 
-          const cap          = getDrinkEffectiveCapacity(ds.stock, qty);
+          const cap          = getDrinkEffectiveCapacity(ds.stock);
           const outOfStock   = cap !== null && cap === 0 && qty === 0;
           const atMax        = cap !== null && qty >= cap;
           const stockTracked = cap !== null;

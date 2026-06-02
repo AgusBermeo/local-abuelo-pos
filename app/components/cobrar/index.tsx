@@ -41,9 +41,8 @@ function getFoodVariantCap(
 
 function getDrinkEffectiveCapacity(
   drinkStock: number,
-  cartQty: number,
 ): number | null {
-  if (drinkStock === 0 && cartQty === 0) return null;
+  if (drinkStock === 0) return null;
   return drinkStock;
 }
 
@@ -132,7 +131,7 @@ export default function Cobrar({
         const ds = product.drinkSizes?.find((d) => d.key === sizeKey);
         if (ds) {
           const currentQty = cart.find((e) => e.key === key)?.quantity ?? 0;
-          const cap = getDrinkEffectiveCapacity(ds.stock, currentQty);
+          const cap = getDrinkEffectiveCapacity(ds.stock);
           if (cap !== null) capped = Math.min(newQty, cap);
         }
       }
@@ -157,7 +156,7 @@ export default function Cobrar({
       } else {
         const ds = product.drinkSizes?.find((d) => d.key === sizeKey);
         if (ds) {
-          const cap = getDrinkEffectiveCapacity(ds.stock, current);
+          const cap = getDrinkEffectiveCapacity(ds.stock);
           if (cap !== null && current >= cap) return;
         }
       }
