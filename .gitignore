@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# development
+/app/ignore
+
 # production
 /build
 

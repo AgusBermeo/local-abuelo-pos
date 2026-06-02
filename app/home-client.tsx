@@ -4,7 +4,7 @@ import type { SessionPayload } from "../lib/auth/session";
 
 import Header from "./components/header";
 import Tabs from "./components/tabs";
-import Cobrar from "./components/cobrar";
+import Cobrar from "./components/cobrar/index";
 import Ventas from "./components/ventas";
 import Inventario from "./components/inventario";
 
