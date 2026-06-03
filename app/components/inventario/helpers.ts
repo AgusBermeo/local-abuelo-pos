@@ -53,11 +53,7 @@ export function getFoodVariantKeys(
 // ── Colores de stock ──────────────────────────────────────────────────────────
 
 export function stockColor(v: number): string {
-  return v === 0
-    ? "text-red-400"
-    : v <= 5
-    ? "text-orange-400"
-    : "text-green-400";
+  return v === 0 ? "text-red-400" : v <= 5 ? "text-orange-400" : "text-green-400";
 }
 
 export function stockBorderFocus(v: number): string {
@@ -73,24 +69,19 @@ export function stockBorderFocus(v: number): string {
 export function getVariantKeysFromForm(
   form: ProductForm,
 ): Array<{ variantKey: string; label: string }> {
-  const sizes: Array<{ key: string; label: string }> = [];
-
-  if (form.category === "Comida") {
+  // Tamaños habilitados
+  let sizes: Array<{ key: string; label: string }> = [];
+  if (form.category === "Comida" && form.hasSizes) {
     FOOD_SIZE_KEYS.forEach((sk) => {
       if (form.sizeEnabled[sk]) sizes.push({ key: sk, label: FOOD_SIZE_LABELS[sk] });
     });
-  } else {
-    sizes.push({ key: "single", label: "Unidad" });
   }
+  if (sizes.length === 0) sizes = [{ key: "single", label: "Unidad" }];
 
-  if (sizes.length === 0) sizes.push({ key: "single", label: "Unidad" });
-
+  // Rellenos habilitados
   const fillings: Array<{ key: string; label: string }> =
-    form.category === "Comida"
-      ? [
-          { key: "carne", label: "Carne" },
-          { key: "pollo", label: "Pollo" },
-        ]
+    form.category === "Comida" && form.hasFillings
+      ? form.fillingRows.filter((r) => r.key.trim() && r.label.trim())
       : [];
 
   if (fillings.length === 0)
@@ -122,6 +113,10 @@ export function defaultDrinkSizeRow(): DrinkSizeRow {
   };
 }
 
+function defaultFillingRow(key = "", label = "") {
+  return { id: `f_${Date.now()}_${Math.random()}`, key, label };
+}
+
 // ── Formulario vacío ──────────────────────────────────────────────────────────
 
 export const EMPTY_FORM: ProductForm = {
@@ -129,12 +124,18 @@ export const EMPTY_FORM: ProductForm = {
   category: "Comida",
   price: "",
   size: "",
+  hasSizes: true,
   tierRows: {
     grande:   [defaultTierRow(1)],
     normal:   [defaultTierRow(1)],
     bocadito: [defaultTierRow(1)],
   },
   sizeEnabled: { grande: true, normal: true, bocadito: true },
+  hasFillings: true,
+  fillingRows: [
+    defaultFillingRow("carne", "Carne"),
+    defaultFillingRow("pollo", "Pollo"),
+  ],
   variantStockMap: {},
   drinkSizeRows: [defaultDrinkSizeRow()],
 };
@@ -156,6 +157,14 @@ export function productToForm(product: Product): ProductForm {
       if (tierRows[sk][0]) tierRows[sk][0].minQty = "1";
     });
 
+    const hasSizes = Object.values(sizeEnabled).some(Boolean);
+
+    const fillingEntries = Object.entries(product.fillingLabels ?? {});
+    const hasFillings = fillingEntries.length > 0;
+    const fillingRows = hasFillings
+      ? fillingEntries.map(([key, label]) => defaultFillingRow(key, label))
+      : [defaultFillingRow("carne", "Carne"), defaultFillingRow("pollo", "Pollo")];
+
     const variantStockMap: Record<string, string> = {};
     if (product.variantStock) {
       Object.entries(product.variantStock).forEach(([vk, v]) => {
@@ -167,13 +176,17 @@ export function productToForm(product: Product): ProductForm {
       ...EMPTY_FORM,
       name: product.name,
       category: "Comida",
+      hasSizes,
       tierRows,
       sizeEnabled,
+      hasFillings,
+      fillingRows,
       variantStockMap,
       drinkSizeRows: [defaultDrinkSizeRow()],
     };
   }
 
+  // Bebida
   const drinkSizeRows: DrinkSizeRow[] = (product.drinkSizes ?? []).map((ds) => ({
     id: `ds_${Date.now()}_${Math.random()}`,
     label: ds.label,
@@ -185,6 +198,8 @@ export function productToForm(product: Product): ProductForm {
     ...EMPTY_FORM,
     name: product.name,
     category: "Bebida",
+    hasSizes: false,
+    hasFillings: false,
     variantStockMap: {},
     drinkSizeRows: drinkSizeRows.length > 0 ? drinkSizeRows : [defaultDrinkSizeRow()],
   };
@@ -201,32 +216,57 @@ export function validate(
   if (!form.name.trim()) e.name = "El nombre es obligatorio.";
 
   if (form.category === "Comida") {
-    const anySizeEnabled = FOOD_SIZE_KEYS.some((sk) => form.sizeEnabled[sk]);
-    if (!anySizeEnabled) {
-      e.size_grande = "Activa al menos un tamaño.";
-    } else {
-      FOOD_SIZE_KEYS.forEach((sk) => {
-        if (!form.sizeEnabled[sk]) return;
-        const rows = form.tierRows[sk] ?? [];
-        if (rows.length === 0) {
-          e[`size_${sk}`] = "Agrega al menos un escalón.";
-          return;
-        }
-        let anyPositive = false;
-        rows.forEach((row) => {
-          const qty   = Number(row.minQty);
-          const price = Number(row.pricePerUnit);
-          if (row.minQty === "" || isNaN(qty) || qty < 1)
-            e[`${sk}_minQty_${row.id}`] = "Mín. 1.";
-          if (row.pricePerUnit === "" || isNaN(price) || price < 0)
-            e[`${sk}_price_${row.id}`] = "Precio inválido.";
-          else if (price > 0) anyPositive = true;
+    if (form.hasSizes) {
+      const anySizeEnabled = FOOD_SIZE_KEYS.some((sk) => form.sizeEnabled[sk]);
+      if (!anySizeEnabled) {
+        e.size_grande = "Activa al menos un tamaño.";
+      } else {
+        FOOD_SIZE_KEYS.forEach((sk) => {
+          if (!form.sizeEnabled[sk]) return;
+          const rows = form.tierRows[sk] ?? [];
+          if (rows.length === 0) {
+            e[`size_${sk}`] = "Agrega al menos un escalón.";
+            return;
+          }
+          let anyPositive = false;
+          rows.forEach((row) => {
+            const qty   = Number(row.minQty);
+            const price = Number(row.pricePerUnit);
+            if (row.minQty === "" || isNaN(qty) || qty < 1)
+              e[`${sk}_minQty_${row.id}`] = "Mín. 1.";
+            if (row.pricePerUnit === "" || isNaN(price) || price < 0)
+              e[`${sk}_price_${row.id}`] = "Precio inválido.";
+            else if (price > 0) anyPositive = true;
+          });
+          if (!anyPositive)
+            e[`size_${sk}`] = "Al menos un escalón debe tener precio mayor a $0.";
         });
-        if (!anyPositive)
-          e[`size_${sk}`] = "Al menos un escalón debe tener precio mayor a $0.";
-      });
+      }
+    } else {
+      // Sin tamaños: necesita al menos un precio base
+      const baseRows = form.tierRows["single"] ?? [];
+      if (baseRows.length === 0) {
+        e.single_price = "Agrega un precio base.";
+      } else {
+        baseRows.forEach((row) => {
+          const price = Number(row.pricePerUnit);
+          if (row.pricePerUnit === "" || isNaN(price) || price <= 0)
+            e[`single_price_${row.id}`] = "Ingresa un precio mayor a $0.";
+        });
+      }
+    }
+
+    if (form.hasFillings) {
+      if (form.fillingRows.length === 0) {
+        e.fillings = "Agrega al menos un relleno.";
+      } else {
+        form.fillingRows.forEach((row) => {
+          if (!row.label.trim()) e[`filling_label_${row.id}`] = "Nombre requerido.";
+        });
+      }
     }
   } else {
+    // Bebida
     if (form.drinkSizeRows.length === 0) {
       e.drinkSizes = "Agrega al menos una presentación.";
     } else {
@@ -251,24 +291,47 @@ export function formToProduct(form: ProductForm, id: number): Product {
     const tieredPrices: TieredPrices = {};
     const sizeLabels: Record<string, string> = {};
 
-    FOOD_SIZE_KEYS.forEach((sk) => {
-      if (!form.sizeEnabled[sk]) return;
-      sizeLabels[sk] = FOOD_SIZE_LABELS[sk];
-      tieredPrices[sk] = (form.tierRows[sk] ?? [])
+    if (form.hasSizes) {
+      FOOD_SIZE_KEYS.forEach((sk) => {
+        if (!form.sizeEnabled[sk]) return;
+        sizeLabels[sk] = FOOD_SIZE_LABELS[sk];
+        tieredPrices[sk] = (form.tierRows[sk] ?? [])
+          .filter((r) => r.pricePerUnit !== "" && Number(r.pricePerUnit) > 0)
+          .map((r) => ({
+            minQty: Math.max(1, Number(r.minQty) || 1),
+            pricePerUnit: Number(r.pricePerUnit),
+          }))
+          .sort((a, b) => a.minQty - b.minQty);
+
+        if (tieredPrices[sk].length > 0 && tieredPrices[sk][0].minQty !== 1) {
+          tieredPrices[sk].unshift({ ...tieredPrices[sk][0], minQty: 1 });
+        }
+      });
+    } else {
+      // Sin tamaño: usar clave "single"
+      sizeLabels["single"] = "Unidad";
+      const baseRows = form.tierRows["single"] ?? [];
+      tieredPrices["single"] = baseRows
         .filter((r) => r.pricePerUnit !== "" && Number(r.pricePerUnit) > 0)
         .map((r) => ({
           minQty: Math.max(1, Number(r.minQty) || 1),
           pricePerUnit: Number(r.pricePerUnit),
         }))
         .sort((a, b) => a.minQty - b.minQty);
-
-      if (
-        tieredPrices[sk].length > 0 &&
-        tieredPrices[sk][0].minQty !== 1
-      ) {
-        tieredPrices[sk].unshift({ ...tieredPrices[sk][0], minQty: 1 });
+      if (tieredPrices["single"].length > 0 && tieredPrices["single"][0].minQty !== 1) {
+        tieredPrices["single"].unshift({ ...tieredPrices["single"][0], minQty: 1 });
       }
-    });
+    }
+
+    const fillingLabels: Record<string, string> = {};
+    if (form.hasFillings) {
+      form.fillingRows.forEach((row) => {
+        const key = row.key.trim()
+          || row.label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")
+          || `f_${row.id}`;
+        if (row.label.trim()) fillingLabels[key] = row.label.trim();
+      });
+    }
 
     const variantStock: Record<string, number> = {};
     Object.entries(form.variantStockMap).forEach(([vk, raw]) => {
@@ -281,17 +344,16 @@ export function formToProduct(form: ProductForm, id: number): Product {
       category: "Comida",
       tieredPrices,
       sizeLabels,
-      fillingLabels: { carne: "Carne", pollo: "Pollo" },
+      fillingLabels,
       variantStock,
     };
   }
 
+  // Bebida
   const drinkSizes: DrinkSize[] = form.drinkSizeRows.map((row) => ({
     key:
-      row.label
-        .toLowerCase()
-        .replace(/\s+/g, "_")
-        .replace(/[^a-z0-9_]/g, "") || `size_${row.id}`,
+      row.label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")
+      || `size_${row.id}`,
     label: row.label.trim(),
     price: Math.max(0, Number(row.price) || 0),
     stock: Math.max(0, Math.round(Number(row.stock) || 0)),

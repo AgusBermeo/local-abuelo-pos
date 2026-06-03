@@ -25,8 +25,7 @@ export type Product = {
 
 // ── Tipos de filas de formulario ──────────────────────────────────────────────
 
-export type TierRow = { id: string; minQty: string; pricePerUnit: string };
-
+export type TierRow     = { id: string; minQty: string; pricePerUnit: string };
 export type DrinkSizeRow = { id: string; label: string; price: string; stock: string };
 
 // ── Tipo del formulario principal ─────────────────────────────────────────────
@@ -36,9 +35,16 @@ export type ProductForm = {
   category: "Comida" | "Bebida";
   price: string;
   size: string;
+  // Tamaños
+  hasSizes: boolean;
   tierRows: Record<string, TierRow[]>;
   sizeEnabled: Record<string, boolean>;
+  // Rellenos
+  hasFillings: boolean;
+  fillingRows: Array<{ id: string; key: string; label: string }>;
+  // Stock
   variantStockMap: Record<string, string>;
+  // Bebidas
   drinkSizeRows: DrinkSizeRow[];
 };
 
