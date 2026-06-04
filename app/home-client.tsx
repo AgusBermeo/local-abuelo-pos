@@ -15,7 +15,7 @@ import { useLocalStorage } from "./hooks/useLocalStorage";
 export type PriceTier = { minQty: number; pricePerUnit: number };
 export type TieredPrices = Record<string, PriceTier[]>;
 
-// ── Ingredient (kept for legacy compatibility, no longer used for food stock) ─
+// ── Ingredient ────────────────────────────────────────────────────────────────
 export type Ingredient = { id: string; name: string; stock: number };
 
 // ── DrinkSize ─────────────────────────────────────────────────────────────────
@@ -31,12 +31,23 @@ export type Product = {
   sizeLabels: Record<string, string>;
   fillingLabels: Record<string, string>;
   size?: string;
-  /** Food only: stock per variant key ("grande-carne": 20). 0 = untracked */
   variantStock?: Record<string, number>;
-  /** @deprecated use variantStock for food */
   ingredientMap?: Record<string, Record<string, number>>;
-  // Bebidas: multiple presentations with individual stock
   drinkSizes?: DrinkSize[];
+};
+
+// ── StockEntryLog ─────────────────────────────────────────────────────────────
+/** Registro de un ingreso de inventario (una fila por variante). */
+export type StockEntryLog = {
+  id: number;
+  date: Date;
+  productId: number;
+  productName: string;
+  variantKey: string;
+  variantLabel: string;
+  delta: number;
+  category: "Comida" | "Bebida";
+  doneBy?: { userId: string; displayName: string };
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -74,7 +85,6 @@ export function getVariantKeys(product: Product): Array<{ variantKey: string; la
   return result;
 }
 
-/** Normalize a drink product: if it has legacy price/size fields but no drinkSizes, create one. */
 export function normalizeDrinkSizes(product: Product): Product {
   if (product.category !== "Bebida") return product;
   if (product.drinkSizes && product.drinkSizes.length > 0) return product;
@@ -85,7 +95,6 @@ export function normalizeDrinkSizes(product: Product): Product {
   };
 }
 
-/** Get stock for a food variant. Returns null if untracked (no variantStock or 0). */
 export function getFoodVariantStock(product: Product, variantKey: string): number | null {
   if (!product.variantStock) return null;
   const s = product.variantStock[variantKey];
@@ -93,13 +102,8 @@ export function getFoodVariantStock(product: Product, variantKey: string): numbe
 }
 
 // ── Deduction types ───────────────────────────────────────────────────────────
-/** @deprecated no longer used for food */
 export type IngredientDeduction = { ingredientId: string; quantity: number };
-
-/** Drink size deductions */
-export type DrinkDeduction = { productId: number; drinkSizeKey: string; quantity: number };
-
-/** Food variant deductions */
+export type DrinkDeduction      = { productId: number; drinkSizeKey: string; quantity: number };
 export type FoodVariantDeduction = { productId: number; variantKey: string; quantity: number };
 
 // ── Default products ──────────────────────────────────────────────────────────
@@ -142,9 +146,7 @@ const INITIAL_PRODUCTS: Product[] = [
   {
     id: 8, name: "Gaseosa", category: "Bebida",
     tieredPrices: {}, sizeLabels: {}, fillingLabels: {}, ingredientMap: {},
-    drinkSizes: [
-      { key: "500ml", label: "500ml", price: 1.50, stock: 0 },
-    ],
+    drinkSizes: [{ key: "500ml", label: "500ml", price: 1.50, stock: 0 }],
   },
   {
     id: 9, name: "Agua sin gas", category: "Bebida",
@@ -168,7 +170,7 @@ const INITIAL_PRODUCTS: Product[] = [
   },
 ];
 
-export type OrderItem = { name: string; quantity: number; price: number };
+export type OrderItem    = { name: string; quantity: number; price: number };
 export type PaymentMethod = "efectivo" | "transferencia" | "deuna";
 
 export type Sale = {
@@ -177,7 +179,6 @@ export type Sale = {
   tax?: number;
   orderType?: "servir" | "llevar" | "delivery";
   deliveryCost?: number;
-  /** @deprecated */
   deductions?: IngredientDeduction[];
   drinkDeductions?: DrinkDeduction[];
   foodVariantDeductions?: FoodVariantDeduction[];
@@ -185,18 +186,18 @@ export type Sale = {
 };
 
 export default function HomeClient({ session }: { session: SessionPayload | null }) {
-  const [products,    setProducts]    = useLocalStorage<Product[]>   ("abuelo-products",    INITIAL_PRODUCTS);
-  const [ingredients, setIngredients] = useLocalStorage<Ingredient[]>("abuelo-ingredients", []);
-  const [sales,       setSales]       = useLocalStorage<Sale[]>      ("abuelo-sales",       []);
-  const [activeTab,   setActiveTab]   = useState(0);
+  const [products,     setProducts]     = useLocalStorage<Product[]>      ("abuelo-products",     INITIAL_PRODUCTS);
+  const [ingredients,  setIngredients]  = useLocalStorage<Ingredient[]>   ("abuelo-ingredients",  []);
+  const [sales,        setSales]        = useLocalStorage<Sale[]>         ("abuelo-sales",        []);
+  const [stockEntries, setStockEntries] = useLocalStorage<StockEntryLog[]>("abuelo-stock-entries", []);
+  const [activeTab,    setActiveTab]    = useState(0);
 
   const deliveredRef = useRef<Set<number>>(new Set());
 
-  const userRole = session?.role ?? "cajero";
-  const canManageSales = userRole === "superadmin" || userRole === "admin";
+  const userRole           = session?.role ?? "cajero";
+  const canManageSales     = userRole === "superadmin" || userRole === "admin";
   const canManageInventory = userRole === "superadmin" || userRole === "admin";
 
-  // Conteo de pedidos pendientes
   const pendingCount = sales.filter((s) => s.status === "pending" || !s.status).length;
 
   const normalizedProducts = products.map((product) => ({
@@ -210,7 +211,8 @@ export default function HomeClient({ session }: { session: SessionPayload | null
     }),
   }));
 
-  // ── applyDrinkDeductions ──────────────────────────────────────────────────
+  // ── Stock deductions ──────────────────────────────────────────────────────
+
   const applyDrinkDeductions = (deductions: DrinkDeduction[]) => {
     if (!deductions || deductions.length === 0) return;
     setProducts((prev) =>
@@ -228,7 +230,6 @@ export default function HomeClient({ session }: { session: SessionPayload | null
     );
   };
 
-  // ── applyFoodVariantDeductions ────────────────────────────────────────────
   const applyFoodVariantDeductions = (deductions: FoodVariantDeduction[]) => {
     if (!deductions || deductions.length === 0) return;
     setProducts((prev) =>
@@ -248,6 +249,7 @@ export default function HomeClient({ session }: { session: SessionPayload | null
   };
 
   // ── addSale ───────────────────────────────────────────────────────────────
+
   const addSale = (
     items: OrderItem[],
     total: number,
@@ -259,7 +261,6 @@ export default function HomeClient({ session }: { session: SessionPayload | null
     deliveryCost: number = 0
   ) => {
     const isServir = orderType === "servir" || orderType === "delivery";
-
     setSales((prev) => [
       {
         id: Date.now(),
@@ -279,16 +280,38 @@ export default function HomeClient({ session }: { session: SessionPayload | null
       },
       ...prev,
     ]);
-
     if (isServir) {
       applyFoodVariantDeductions(foodVariantDeductions);
       applyDrinkDeductions(drinkDeductions);
     }
   };
 
+  // ── Stock entry log ───────────────────────────────────────────────────────
+
+  const addStockEntries = (
+    entries: Omit<StockEntryLog, "id" | "date">[],
+  ) => {
+    const now = new Date();
+    setStockEntries((prev) => [
+      ...entries.map((e) => ({
+        ...e,
+        id: Date.now() + Math.random(),
+        date: now,
+        doneBy: session
+          ? { userId: session.userId, displayName: session.displayName }
+          : undefined,
+      })),
+      ...prev,
+    ]);
+  };
+
+  // ── Ingredient CRUD ───────────────────────────────────────────────────────
+
   const addIngredient    = (ing: Ingredient) => setIngredients((prev) => [...prev, ing]);
   const editIngredient   = (ing: Ingredient) => setIngredients((prev) => prev.map((i) => i.id === ing.id ? ing : i));
   const deleteIngredient = (id: string) => setIngredients((prev) => prev.filter((i) => i.id !== id));
+
+  // ── Product CRUD ──────────────────────────────────────────────────────────
 
   const addProduct = (p: Partial<Product>) =>
     setProducts((prev) => [
@@ -310,9 +333,10 @@ export default function HomeClient({ session }: { session: SessionPayload | null
   const editProduct   = (p: Product) => setProducts((prev) => prev.map((x) => x.id === p.id ? p : x));
   const deleteProduct = (id: number) => setProducts((prev) => prev.filter((p) => p.id !== id));
 
+  // ── Sale mutations ────────────────────────────────────────────────────────
+
   const deleteSale = (id: number) => setSales((prev) => prev.filter((s) => s.id !== id));
 
-  // ── markDelivered ─────────────────────────────────────────────────────────
   const markDelivered = (id: number) => {
     if (deliveredRef.current.has(id)) {
       setSales((prev) =>
@@ -325,18 +349,11 @@ export default function HomeClient({ session }: { session: SessionPayload | null
       return;
     }
     deliveredRef.current.add(id);
-
     const sale = sales.find((s) => s.id === id);
-
     if (sale?.orderType === "llevar") {
-      if (sale.foodVariantDeductions && sale.foodVariantDeductions.length > 0) {
-        applyFoodVariantDeductions(sale.foodVariantDeductions);
-      }
-      if (sale.drinkDeductions && sale.drinkDeductions.length > 0) {
-        applyDrinkDeductions(sale.drinkDeductions);
-      }
+      if (sale.foodVariantDeductions?.length) applyFoodVariantDeductions(sale.foodVariantDeductions);
+      if (sale.drinkDeductions?.length)       applyDrinkDeductions(sale.drinkDeductions);
     }
-
     setSales((prev) =>
       prev.map((s) =>
         s.id === id
@@ -354,10 +371,11 @@ export default function HomeClient({ session }: { session: SessionPayload | null
   const editSale = (id: number, date: Date, paymentMethod: PaymentMethod) =>
     setSales((prev) => prev.map((s) => s.id === id ? { ...s, date, paymentMethod } : s));
 
+  // ── Derived ───────────────────────────────────────────────────────────────
+
   const foodProducts  = normalizedProducts.filter((p) => p.category === "Comida");
   const drinkProducts = normalizedProducts.filter((p) => p.category === "Bebida");
 
-  // Ir a la pestaña de Ventas desde la campana
   const handleBellClick = () => setActiveTab(1);
 
   const TABS = [
@@ -393,6 +411,7 @@ export default function HomeClient({ session }: { session: SessionPayload | null
           onAddProduct={canManageInventory ? addProduct : undefined}
           onDeleteProduct={canManageInventory ? deleteProduct : undefined}
           onEditProduct={canManageInventory ? editProduct : undefined}
+          onLogStockEntry={canManageInventory ? addStockEntries : undefined}
           readOnly={!canManageInventory}
         />
       ),

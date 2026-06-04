@@ -1,16 +1,13 @@
 "use client";
 
 // app/reporte/page.tsx
-//
-// Orquestador del módulo Reporte.
-// Contiene únicamente estado de período, cálculo de KPIs y composición
-// de secciones. Toda la lógica de visualización vive en los subcomponentes.
 
 import { useState }          from "react";
 import { useLocalStorage }   from "../hooks/useLocalStorage";
 import Header                from "../components/header";
 
 import type { Sale, Product, Period } from "./types";
+import type { StockEntryLog }         from "../home-client";
 import { PERIODS }                    from "./types";
 import {
   getPeriodSales,
@@ -20,24 +17,58 @@ import {
   monthLabel,
 } from "./helpers";
 
-import SectionCard             from "./SectionCard";
-import StatCard                from "./StatCard";
-import DailyBarChart           from "./DailyBarChart";
-import ComparativaRow          from "./ComparativaRow";
-import TopProductsSection      from "./TopProductsSection";
-import OrderTypeSection        from "./OrderTypeSection";
-import MetodosPagoSection      from "./MetodosPagoSection";
-import VentasPorUsuario        from "./VentasPorUsuario";
-import HistorialSection        from "./HistorialSection";
-import VariantesSection        from "./VariantesSection";
-import ConsumoVariantesSection from "./ConsumoVariantesSection";
+import SectionCard                from "./SectionCard";
+import StatCard                   from "./StatCard";
+import DailyBarChart              from "./DailyBarChart";
+import ComparativaRow             from "./ComparativaRow";
+import TopProductsSection         from "./TopProductsSection";
+import OrderTypeSection           from "./OrderTypeSection";
+import MetodosPagoSection         from "./MetodosPagoSection";
+import VentasPorUsuario           from "./VentasPorUsuario";
+import HistorialSection           from "./HistorialSection";
+import VariantesSection           from "./VariantesSection";
+import ConsumoVariantesSection    from "./ConsumoVariantesSection";
+import IngresoInventarioSection   from "./IngresoInventarioSection";
+
+// ── Helper de filtrado de StockEntryLog por período ───────────────────────────
+
+function toLocalDateStr(date: Date | string): string {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function getPeriodStockEntries(
+  entries: StockEntryLog[],
+  period: Period,
+  selectedMonth: string,
+): StockEntryLog[] {
+  const now = new Date();
+  return entries.filter((e) => {
+    const d = new Date(e.date);
+    if (period === "today")
+      return toLocalDateStr(d) === toLocalDateStr(now);
+    if (period === "yesterday") {
+      const y = new Date(now); y.setDate(now.getDate() - 1);
+      return toLocalDateStr(d) === toLocalDateStr(y);
+    }
+    if (period === "week") {
+      const w = new Date(now); w.setDate(now.getDate() - 6); w.setHours(0, 0, 0, 0);
+      return d >= w;
+    }
+    if (period === "month") {
+      const [y, m] = selectedMonth.split("-").map(Number);
+      return d.getFullYear() === y && d.getMonth() === m - 1;
+    }
+    return true; // "all"
+  });
+}
 
 export default function ReportePage() {
-  const [sales]    = useLocalStorage<Sale[]>   ("abuelo-sales",    []);
-  const [products] = useLocalStorage<Product[]>("abuelo-products", []);
-  const [period, setPeriod] = useState<Period>("week");
+  const [sales]        = useLocalStorage<Sale[]>         ("abuelo-sales",         []);
+  const [products]     = useLocalStorage<Product[]>      ("abuelo-products",      []);
+  const [stockEntries] = useLocalStorage<StockEntryLog[]>("abuelo-stock-entries", []);
 
-  // ── Selector de mes ──────────────────────────────────────────────────────
+  const [period, setPeriod] = useState<Period>("week");
 
   const nowYM = (() => {
     const n = new Date();
@@ -54,6 +85,10 @@ export default function ReportePage() {
 
   const periodSales = getPeriodSales(sales, period, selectedMonth);
   const prevSales   = getPrevPeriodSales(sales, period, selectedMonth);
+
+  // ── Ingresos de inventario filtrados ─────────────────────────────────────
+
+  const periodStockEntries = getPeriodStockEntries(stockEntries, period, selectedMonth);
 
   // ── KPIs ─────────────────────────────────────────────────────────────────
 
@@ -75,12 +110,8 @@ export default function ReportePage() {
       productTotals[item.name].revenue  += item.price * item.quantity;
     }
 
-  // ── Config gráfico ───────────────────────────────────────────────────────
-
   const chartDays      = period === "today" || period === "yesterday" ? 1 : period === "week" ? 7 : 30;
   const chartEndOffset = period === "yesterday" ? 1 : 0;
-
-  // ── Etiqueta período anterior ────────────────────────────────────────────
 
   const prevMonthLabel = (() => {
     const [y, m] = selectedMonth.split("-").map(Number);
@@ -103,8 +134,6 @@ export default function ReportePage() {
       p.variantStock &&
       Object.keys(p.variantStock).length > 0,
   );
-
-  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col min-h-dvh bg-amber-950/60 font-sans">
@@ -263,6 +292,14 @@ export default function ReportePage() {
           <VariantesSection sales={periodSales} products={products} />
         </SectionCard>
 
+        {/* Ingresos de inventario */}
+        <SectionCard title="📥 Ingresos de inventario">
+          <IngresoInventarioSection
+            entries={stockEntries}
+            periodEntries={periodStockEntries}
+          />
+        </SectionCard>
+
         {/* Ventas por usuario */}
         <SectionCard title="👤 Ventas por usuario">
           <VentasPorUsuario sales={periodSales} />
@@ -274,10 +311,10 @@ export default function ReportePage() {
         </SectionCard>
 
         {/* Estado vacío */}
-        {periodSales.length === 0 && (
+        {periodSales.length === 0 && periodStockEntries.length === 0 && (
           <div className="bg-amber-900/20 border-2 border-amber-900 rounded-xl p-8 text-center flex flex-col gap-2">
             <span className="text-4xl">📭</span>
-            <p className="text-amber-600 font-semibold">Sin ventas en este período</p>
+            <p className="text-amber-600 font-semibold">Sin actividad en este período</p>
             <p className="text-amber-800 text-xs">
               Selecciona otro período o registra nuevas ventas.
             </p>

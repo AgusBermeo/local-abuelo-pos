@@ -20,12 +20,16 @@ import {
 
 import type { CartEntry, OrderType } from "./types";
 import { makeCartKey, variantKeyStr } from "./types";
+import type { SavedOrder } from "./savedOrders";
+import { createSavedOrder, updateSavedOrder } from "./savedOrders";
 
-import FoodProductCard  from "./FoodProductCard";
-import DrinkProductCard from "./DrinkProductCard";
-import CartSummary      from "./CartSummary";
-import PaymentModal     from "./PaymentModal";
-import FloatingTotalBar from "./FloatingTotalBar";
+import FoodProductCard    from "./FoodProductCard";
+import DrinkProductCard   from "./DrinkProductCard";
+import CartSummary        from "./CartSummary";
+import PaymentModal       from "./PaymentModal";
+import FloatingTotalBar   from "./FloatingTotalBar";
+import SaveOrderModal     from "./SaveOrderModal";
+import SavedOrdersDrawer  from "./SavedOrdersDrawer";
 
 // ── Helpers de stock ──────────────────────────────────────────────────────────
 
@@ -68,6 +72,28 @@ type Props = {
   ) => void;
 };
 
+// ── Helpers localStorage para pedidos guardados ───────────────────────────────
+
+const SAVED_ORDERS_KEY = "abuelo-saved-orders";
+
+function loadSavedOrders(): SavedOrder[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(SAVED_ORDERS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistSavedOrders(orders: SavedOrder[]): void {
+  try {
+    window.localStorage.setItem(SAVED_ORDERS_KEY, JSON.stringify(orders));
+  } catch {
+    // silently ignore
+  }
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export default function Cobrar({
@@ -75,7 +101,7 @@ export default function Cobrar({
   drinkProducts,
   onSaleComplete,
 }: Props) {
-  // ── Estado ──────────────────────────────────────────────────────────────────
+  // ── Estado del carrito ───────────────────────────────────────────────────────
 
   const [cart,              setCart]              = useState<CartEntry[]>([]);
   const [discount,          setDiscount]          = useState(0);
@@ -91,6 +117,18 @@ export default function Cobrar({
 
   /** Relleno seleccionado por productId */
   const [selectedFilling, setSelectedFilling] = useState<Record<number, string>>({});
+
+  // ── Estado de pedidos guardados ──────────────────────────────────────────────
+
+  const [savedOrders,      setSavedOrders]      = useState<SavedOrder[]>(() => loadSavedOrders());
+  const [activeOrderId,    setActiveOrderId]    = useState<string | null>(null);
+  const [showSaveModal,    setShowSaveModal]    = useState(false);
+  const [showDrawer,       setShowDrawer]       = useState(false);
+
+  // Persistir cada vez que cambian los pedidos guardados
+  useEffect(() => {
+    persistSavedOrders(savedOrders);
+  }, [savedOrders]);
 
   // ── Intersection Observer para barra flotante ────────────────────────────────
 
@@ -208,6 +246,27 @@ export default function Cobrar({
     [cart, allProducts],
   );
 
+  /** Calcula el total de un carrito externo (para el drawer de pedidos guardados) */
+  const getOrderTotal = useCallback(
+    (orderCart: CartEntry[]): number => {
+      return orderCart.reduce((sum, entry) => {
+        const product = allProducts.find((p) => p.id === entry.productId);
+        if (!product) return sum;
+        let price = 0;
+        if (product.category === "Bebida") {
+          const ds = product.drinkSizes?.find((d) => d.key === entry.sizeKey);
+          price = ds ? ds.price : (product.price ?? 0);
+        } else {
+          const tiers = product.tieredPrices[entry.sizeKey];
+          if (tiers) price = getTierPrice(product, entry.sizeKey, entry.quantity);
+          else price = product.price ?? 0;
+        }
+        return sum + price * entry.quantity;
+      }, 0);
+    },
+    [allProducts],
+  );
+
   const subtotal       = cart.reduce((s, e) => s + getEntryPrice(e) * e.quantity, 0);
   const discountAmount = Math.min(discount, subtotal);
   const afterDiscount  = subtotal - discountAmount;
@@ -215,6 +274,44 @@ export default function Cobrar({
   const effectiveDeliveryCost = orderType === "delivery" ? deliveryCost : 0;
   const total          = afterDiscount + taxAmount + effectiveDeliveryCost;
   const totalItems     = cart.reduce((s, e) => s + e.quantity, 0);
+
+  // ── Guardar pedido ───────────────────────────────────────────────────────────
+
+  const handleSaveOrder = (name: string, note?: string) => {
+    if (activeOrderId) {
+      // Actualizar el pedido activo existente
+      setSavedOrders((prev) =>
+        prev.map((o) =>
+          o.id === activeOrderId
+            ? updateSavedOrder(o, cart, discount, taxEnabled, taxRate)
+            : o
+        )
+      );
+    } else {
+      // Crear nuevo pedido guardado
+      const newOrder = createSavedOrder(name, cart, discount, taxEnabled, taxRate, note);
+      setSavedOrders((prev) => [newOrder, ...prev]);
+      setActiveOrderId(newOrder.id);
+    }
+  };
+
+  /** Carga un pedido guardado al carrito activo */
+  const handleLoadOrder = (order: SavedOrder) => {
+    setCart(order.cart);
+    setDiscount(order.discount);
+    setShowDiscount(order.discount > 0);
+    setTaxEnabled(order.taxEnabled);
+    setTaxRate(order.taxRate);
+    setTaxRateInput(String(order.taxRate));
+    setActiveOrderId(order.id);
+    setSelectedFilling({});
+  };
+
+  /** Elimina un pedido guardado */
+  const handleDeleteSavedOrder = (id: string) => {
+    setSavedOrders((prev) => prev.filter((o) => o.id !== id));
+    if (activeOrderId === id) setActiveOrderId(null);
+  };
 
   // ── Confirmar venta ──────────────────────────────────────────────────────────
 
@@ -268,6 +365,12 @@ export default function Cobrar({
       orderType === "delivery" ? deliveryCost : 0,
     );
 
+    // Si había un pedido activo, eliminarlo de guardados al cobrar
+    if (activeOrderId) {
+      setSavedOrders((prev) => prev.filter((o) => o.id !== activeOrderId));
+      setActiveOrderId(null);
+    }
+
     // Reset
     setCart([]);
     setSelectedFilling({});
@@ -290,14 +393,56 @@ export default function Cobrar({
     setOrderType(null);
     setDeliveryCost(0);
     setDeliveryCostInput("");
+    setActiveOrderId(null);
   };
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
   const showFloatingBar = total > 0 && !isTotalVisible;
+  const activeOrder     = savedOrders.find((o) => o.id === activeOrderId) ?? null;
+  const cartHasItems    = cart.length > 0;
 
   return (
     <div className="flex flex-col gap-4 w-full max-w-4xl mx-auto">
+
+      {/* ── Banner de pedido activo ── */}
+      {activeOrder && (
+        <div className="flex items-center gap-3 bg-amber-900/30 border-2 border-amber-600 rounded-xl px-4 py-3">
+          <span className="text-base leading-none shrink-0">📋</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-amber-300 truncate">
+              Editando: <span className="text-amber-400">{activeOrder.name}</span>
+            </p>
+            {activeOrder.note && (
+              <p className="text-[10px] text-amber-700 italic truncate">"{activeOrder.note}"</p>
+            )}
+          </div>
+          <button
+            onClick={() => { setActiveOrderId(null); }}
+            className="text-[10px] uppercase tracking-widest font-bold text-amber-700 hover:text-amber-500 border border-amber-800 hover:border-amber-600 rounded-lg px-2.5 py-1 cursor-pointer transition-colors shrink-0"
+          >
+            Desanclar
+          </button>
+        </div>
+      )}
+
+      {/* ── Botón de pedidos guardados (top bar) ── */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => setShowDrawer(true)}
+          className="relative flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold text-amber-600 hover:text-amber-400 border border-amber-800 hover:border-amber-600 rounded-lg px-3 py-1.5 cursor-pointer transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-3.5 h-3.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+          </svg>
+          Pedidos guardados
+          {savedOrders.length > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-amber-500 text-amber-950 text-[10px] font-black px-1 leading-none">
+              {savedOrders.length}
+            </span>
+          )}
+        </button>
+      </div>
 
       {/* ── Comida ── */}
       {foodProducts.length > 0 && (
@@ -378,6 +523,10 @@ export default function Cobrar({
           setDeliveryCostInput("");
           setShowPaymentModal(true);
         }}
+        // Nuevas props para guardar pedido
+        hasItemsInCart={cartHasItems}
+        activeOrderId={activeOrderId}
+        onSaveOrder={() => setShowSaveModal(true)}
       />
 
       {/* ── Modal de pago ── */}
@@ -402,6 +551,27 @@ export default function Cobrar({
           onSelectPayment={setSelectedPayment}
           onCancel={() => setShowPaymentModal(false)}
           onConfirm={confirmPayment}
+        />
+      )}
+
+      {/* ── Modal guardar pedido ── */}
+      {showSaveModal && (
+        <SaveOrderModal
+          existingName={activeOrder?.name}
+          onClose={() => setShowSaveModal(false)}
+          onConfirm={handleSaveOrder}
+        />
+      )}
+
+      {/* ── Drawer de pedidos guardados ── */}
+      {showDrawer && (
+        <SavedOrdersDrawer
+          orders={savedOrders}
+          activeOrderId={activeOrderId}
+          getOrderTotal={getOrderTotal}
+          onLoad={handleLoadOrder}
+          onDelete={handleDeleteSavedOrder}
+          onClose={() => setShowDrawer(false)}
         />
       )}
 
