@@ -60,7 +60,7 @@ export default function FoodProductCard({
   const currentFilling = hasRelleno ? selectedFilling : "none";
 
   return (
-    <div className="bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4 flex flex-col col-span-2 gap-3">
+    <div className={`bg-amber-900/30 border-2 border-amber-800 rounded-lg p-4 flex flex-col ${hasRelleno ? "col-span-6" : "lg:col-span-2 sm:col-span-3 col-span-6"} gap-3`}>
       <h2 className="font-bold text-sm">{product.name}</h2>
 
       {/* Selector de relleno */}

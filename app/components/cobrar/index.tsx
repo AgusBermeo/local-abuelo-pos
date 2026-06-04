@@ -303,7 +303,7 @@ export default function Cobrar({
       {foodProducts.length > 0 && (
         <>
           <h3 className="uppercase text-amber-500 font-bold text-sm">Comida</h3>
-          <div className="grid lg:grid-cols-2 md:grid-cols-2 grid-cols-1 gap-3">
+          <div className="grid grid-cols-6 gap-3">
             {foodProducts.map((p) => (
               <FoodProductCard
                 key={p.id}
