@@ -14,6 +14,7 @@ import ProductCard        from "./ProductCard";
 import AddProductModal    from "./AddProductModal";
 import EditProductModal   from "./EditProductModal";
 import DeleteProductModal from "./DeleteProductModal";
+import StockEntryModal   from "./StockEntryModal";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -34,9 +35,47 @@ export default function Inventario({
   onEditProduct,
   readOnly = false,
 }: Props) {
-  const [showAddModal,  setShowAddModal]  = useState(false);
-  const [editTarget,    setEditTarget]    = useState<Product | null>(null);
-  const [deleteTarget,  setDeleteTarget]  = useState<Product | null>(null);
+  const [showAddModal,    setShowAddModal]    = useState(false);
+  const [showStockEntry,  setShowStockEntry]  = useState(false);
+  const [editTarget,      setEditTarget]      = useState<Product | null>(null);
+  const [deleteTarget,    setDeleteTarget]    = useState<Product | null>(null);
+
+  // ── Aplica los deltas de ingreso de inventario ────────────────────────────
+
+  const handleStockEntry = (
+    deltas: Array<{ productId: number; key: string; delta: number }>,
+  ) => {
+    if (!onEditProduct) return;
+
+    // Agrupar deltas por productId
+    const byProduct: Record<number, Array<{ key: string; delta: number }>> = {};
+    for (const d of deltas) {
+      if (!byProduct[d.productId]) byProduct[d.productId] = [];
+      byProduct[d.productId].push({ key: d.key, delta: d.delta });
+    }
+
+    for (const [pidStr, entries] of Object.entries(byProduct)) {
+      const productId = Number(pidStr);
+      const product   = products.find((p) => p.id === productId);
+      if (!product) continue;
+
+      if (product.category === "Comida") {
+        const newVariantStock = { ...(product.variantStock ?? {}) };
+        for (const { key, delta } of entries) {
+          newVariantStock[key] = (newVariantStock[key] ?? 0) + delta;
+        }
+        onEditProduct({ ...product, variantStock: newVariantStock });
+
+      } else if (product.category === "Bebida" && product.drinkSizes) {
+        const newDrinkSizes = product.drinkSizes.map((ds) => {
+          const entry = entries.find((e) => e.key === ds.key);
+          if (!entry) return ds;
+          return { ...ds, stock: ds.stock + entry.delta };
+        });
+        onEditProduct({ ...product, drinkSizes: newDrinkSizes });
+      }
+    }
+  };
 
   return (
     <div className="w-full flex flex-col max-w-4xl mx-auto gap-4">
@@ -51,21 +90,38 @@ export default function Inventario({
         </div>
       )}
 
-      {/* Encabezado + botón agregar */}
+      {/* Encabezado + botones */}
       <div className="flex flex-col gap-3">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center gap-3 flex-wrap">
           <p className="text-yellow-700 text-xs">
             {readOnly
               ? "Lista de productos disponibles"
               : "Agrega, edita o elimina productos"}
           </p>
-          {!readOnly && onAddProduct && (
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="bg-amber-500 hover:bg-amber-400 text-amber-950 text-xs font-bold py-2 px-4 rounded-md cursor-pointer uppercase transition-colors"
-            >
-              + Agregar producto
-            </button>
+
+          {!readOnly && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Ingreso de inventario */}
+              {onEditProduct && (
+                <button
+                  onClick={() => setShowStockEntry(true)}
+                  className="flex items-center gap-1.5 bg-green-700 hover:bg-green-600 text-white text-xs font-bold py-2 px-4 rounded-md cursor-pointer uppercase transition-colors"
+                >
+                  <span className="text-sm leading-none">📥</span>
+                  Ingresar inventario
+                </button>
+              )}
+
+              {/* Agregar producto */}
+              {onAddProduct && (
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="bg-amber-500 hover:bg-amber-400 text-amber-950 text-xs font-bold py-2 px-4 rounded-md cursor-pointer uppercase transition-colors"
+                >
+                  + Agregar producto
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -130,6 +186,14 @@ export default function Inventario({
             onDeleteProduct(id);
             setDeleteTarget(null);
           }}
+        />
+      )}
+
+      {showStockEntry && !readOnly && onEditProduct && (
+        <StockEntryModal
+          products={products}
+          onClose={() => setShowStockEntry(false)}
+          onConfirm={handleStockEntry}
         />
       )}
     </div>
