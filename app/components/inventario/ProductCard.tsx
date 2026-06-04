@@ -161,14 +161,14 @@ export default function ProductCard({ product, readOnly, onEdit, onDelete }: Pro
               <p className="text-[10px] uppercase tracking-widest text-yellow-700">
                 📦 Stock por variante
               </p>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <div className="grid grid-cols-3 gap-x-4 gap-y-1">
                 {variantKeys.map(({ variantKey, label }) => {
                   const s       = product.variantStock?.[variantKey] ?? 0;
                   const tracked = s > 0;
                   return (
                     <div
                       key={variantKey}
-                      className="flex items-center justify-between gap-2 min-w-0"
+                      className="flex items-center justify-between gap-2 min-w-0 max-w-30"
                     >
                       <span className="text-[10px] text-amber-300 truncate">{label}</span>
                       {tracked ? (
