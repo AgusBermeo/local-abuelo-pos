@@ -263,6 +263,7 @@ export default function HomeClient({ session }: { session: SessionPayload | null
     deliveryCost: number = 0,
     scheduledFor?: string,
   ) => {
+    // "servir" descuenta al cobrar; "llevar" y "delivery" esperan a marcar entregado
     const isServir = orderType === "servir";
     setSales((prev) => [
       {
@@ -341,7 +342,51 @@ export default function HomeClient({ session }: { session: SessionPayload | null
 
   const deleteSale = (id: number) => setSales((prev) => prev.filter((s) => s.id !== id));
 
-  const markDelivered = (id: number) => {
+  /**
+   * Verifica que haya stock suficiente para aplicar las deducciones de una venta.
+   * Devuelve un mensaje de error descriptivo, o null si todo está bien.
+   */
+  const checkStockForSale = (sale: Sale): string | null => {
+    const errors: string[] = [];
+
+    // Comida: variantStock
+    for (const ded of sale.foodVariantDeductions ?? []) {
+      const product = products.find((p) => p.id === ded.productId);
+      if (!product) continue;
+      const current = product.variantStock?.[ded.variantKey] ?? 0;
+      if (current === 0) continue; // 0 = sin seguimiento, no bloqueamos
+      if (current < ded.quantity) {
+        const parts = ded.variantKey.split("-");
+        const sizeLabel = product.sizeLabels?.[parts[0]] ?? parts[0];
+        const fillingLabel = parts[1] && parts[1] !== "none"
+          ? (product.fillingLabels?.[parts[1]] ?? parts[1])
+          : null;
+        const variantLabel = fillingLabel ? `${sizeLabel} · ${fillingLabel}` : sizeLabel;
+        errors.push(`${product.name} ${variantLabel}: stock ${current}, necesita ${ded.quantity}`);
+      }
+    }
+
+    // Bebidas: drinkSizes stock
+    for (const ded of sale.drinkDeductions ?? []) {
+      const product = products.find((p) => p.id === ded.productId);
+      if (!product || product.category !== "Bebida") continue;
+      const ds = product.drinkSizes?.find((d) => d.key === ded.drinkSizeKey);
+      if (!ds || ds.stock === 0) continue; // 0 = sin seguimiento
+      if (ds.stock < ded.quantity) {
+        errors.push(`${product.name} ${ds.label}: stock ${ds.stock}, necesita ${ded.quantity}`);
+      }
+    }
+
+    if (errors.length === 0) return null;
+    return errors.join("\n");
+  };
+
+  /**
+   * Marca una venta como entregada.
+   * Para llevar y delivery verifica stock antes de descontar.
+   * Devuelve null si OK, o un string con el error si no hay stock suficiente.
+   */
+  const markDelivered = (id: number): string | null => {
     if (deliveredRef.current.has(id)) {
       setSales((prev) =>
         prev.map((s) =>
@@ -350,14 +395,21 @@ export default function HomeClient({ session }: { session: SessionPayload | null
             : s
         )
       );
-      return;
+      return null;
     }
-    deliveredRef.current.add(id);
+
     const sale = sales.find((s) => s.id === id);
+
     if (sale?.orderType === "llevar" || sale?.orderType === "delivery") {
+      const error = checkStockForSale(sale);
+      if (error) return error;
+      deliveredRef.current.add(id);
       if (sale.foodVariantDeductions?.length) applyFoodVariantDeductions(sale.foodVariantDeductions);
       if (sale.drinkDeductions?.length)       applyDrinkDeductions(sale.drinkDeductions);
+    } else {
+      deliveredRef.current.add(id);
     }
+
     setSales((prev) =>
       prev.map((s) =>
         s.id === id
@@ -365,6 +417,7 @@ export default function HomeClient({ session }: { session: SessionPayload | null
           : s
       )
     );
+    return null;
   };
 
   const unmarkDelivered = (id: number) => {

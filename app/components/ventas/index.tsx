@@ -23,11 +23,54 @@ import EditSaleModal        from "./EditSaleModal";
 type Props = {
   sales: Sale[];
   onDelete?: (id: number) => void;
-  onMarkDelivered: (id: number) => void;
+  onMarkDelivered: (id: number) => string | null;
   onUnmarkDelivered: (id: number) => void;
   onEdit?: (id: number, date: Date, paymentMethod: PaymentMethod) => void;
   readOnly?: boolean;
 };
+
+// ── Modal de error de stock ───────────────────────────────────────────────────
+
+function StockErrorModal({
+  message,
+  onClose,
+}: {
+  message: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-amber-950 border-2 border-red-700 rounded-xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">⚠️</span>
+          <h2 className="text-red-400 font-bold text-base uppercase tracking-widest leading-tight">
+            Sin stock suficiente
+          </h2>
+        </div>
+        <p className="text-amber-300 text-sm">
+          No se puede marcar el pedido como entregado porque faltan productos en inventario:
+        </p>
+        <div className="flex flex-col gap-1.5 bg-red-950/40 border border-red-900 rounded-lg px-4 py-3">
+          {message.split("\n").map((line, i) => (
+            <p key={i} className="text-red-300 text-xs font-semibold">
+              • {line}
+            </p>
+          ))}
+        </div>
+        <p className="text-[10px] text-amber-700 uppercase tracking-widest">
+          Ingresa stock en Inventario → Ingresar inventario y vuelve a intentarlo.
+        </p>
+        <button
+          onClick={onClose}
+          className="w-full py-2.5 bg-red-800 hover:bg-red-700 text-white rounded-xl text-sm font-bold uppercase tracking-widest cursor-pointer transition-colors"
+        >
+          Entendido
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ── Componente ────────────────────────────────────────────────────────────────
 
@@ -48,9 +91,17 @@ export default function Ventas({
 
   // ── Estado de modales ──────────────────────────────────────────────────────
 
-  const [deleteTarget, setDeleteTarget] = useState<Sale | null>(null);
-  const [unmarkTarget, setUnmarkTarget] = useState<Sale | null>(null);
-  const [editTarget,   setEditTarget]   = useState<Sale | null>(null);
+  const [deleteTarget,    setDeleteTarget]    = useState<Sale | null>(null);
+  const [unmarkTarget,    setUnmarkTarget]    = useState<Sale | null>(null);
+  const [editTarget,      setEditTarget]      = useState<Sale | null>(null);
+  const [stockError,      setStockError]      = useState<string | null>(null);
+
+  // ── Handler con captura de error de stock ──────────────────────────────────
+
+  const handleMarkDelivered = (id: number) => {
+    const error = onMarkDelivered(id);
+    if (error) setStockError(error);
+  };
 
   // ── Lógica de filtrado ─────────────────────────────────────────────────────
 
@@ -215,7 +266,7 @@ export default function Ventas({
               key={sale.id}
               sale={sale}
               readOnly={readOnly || !onEdit || !onDelete}
-              onMarkDelivered={onMarkDelivered}
+              onMarkDelivered={handleMarkDelivered}
               onOpenUnmark={setUnmarkTarget}
               onOpenEdit={onEdit ? setEditTarget : () => {}}
               onOpenDelete={onDelete ? setDeleteTarget : () => {}}
@@ -231,6 +282,14 @@ export default function Ventas({
       >
         📊 Reporte
       </button>
+
+      {/* Modal error de stock */}
+      {stockError && (
+        <StockErrorModal
+          message={stockError}
+          onClose={() => setStockError(null)}
+        />
+      )}
 
       {/* Modales */}
       {deleteTarget && !readOnly && onDelete && (
