@@ -347,15 +347,16 @@ export default function CartSummary({
                 {activeOrderId ? "Actualizar" : "Guardar"}
               </span>
             </button>
+            <button
+              onClick={onOpenPaymentModal}
+              className="w-full py-3 px-6 rounded-lg font-bold uppercase tracking-widest text-sm bg-amber-500 hover:bg-amber-400 text-amber-950 cursor-pointer transition-colors"
+            >
+              Cobrar ${total.toFixed(2)}
+            </button>
           </div>
 
           {/* Fila inferior: Cobrar */}
-          <button
-            onClick={onOpenPaymentModal}
-            className="w-full py-3 px-6 rounded-lg font-bold uppercase tracking-widest text-sm bg-amber-500 hover:bg-amber-400 text-amber-950 cursor-pointer transition-colors"
-          >
-            Cobrar ${total.toFixed(2)}
-          </button>
+          
         </div>
       )}
     </div>

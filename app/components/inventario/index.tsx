@@ -92,7 +92,7 @@ export default function Inventario({
               {onEditProduct && (
                 <button
                   onClick={() => setShowStockEntry(true)}
-                  className="flex items-center gap-1.5 bg-green-700 hover:bg-green-600 text-white text-xs font-bold py-2 px-4 rounded-md cursor-pointer uppercase transition-colors"
+                  className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-amber-950 text-xs font-bold py-2 px-4 rounded-md cursor-pointer uppercase transition-colors"
                 >
                   <span className="text-sm leading-none">📥</span>
                   Ingresar inventario
