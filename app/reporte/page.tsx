@@ -4,6 +4,7 @@
 
 import { useState }          from "react";
 import { useLocalStorage }   from "../hooks/useLocalStorage";
+import { useRouter }         from "next/navigation";
 import Header                from "../components/header";
 
 import type { Sale, Product, Period } from "./types";
@@ -135,13 +136,16 @@ export default function ReportePage() {
       Object.keys(p.variantStock).length > 0,
   );
 
+  const router = useRouter();
+
   return (
     <div className="flex flex-col min-h-dvh bg-amber-950/60 font-sans">
       <Header session={null} />
 
       <div className="px-5 pt-4">
         <button
-          onClick={() => window.history.back()}
+          onClick={() => router.push("/")}
+
           className="flex items-center gap-2 text-amber-700 hover:text-amber-400 text-xs uppercase tracking-widest font-bold transition-colors cursor-pointer"
         >
           ← Volver a Ventas
@@ -188,7 +192,7 @@ export default function ReportePage() {
                 <button
                   key={ym}
                   onClick={() => setSelectedMonth(ym)}
-                  className={`px-4 py-2 rounded-xl border-2 text-xs font-bold uppercase tracking-widest cursor-pointer transition-all capitalize ${
+                  className={`px-4 py-2 rounded-xl border-2 text-xs font-bold uppercase tracking-widest cursor-pointer transition-all ${
                     selectedMonth === ym
                       ? "border-amber-500 bg-amber-500 text-amber-950"
                       : "border-amber-800 text-amber-600 hover:border-amber-600 hover:text-amber-400 bg-amber-900/20"
