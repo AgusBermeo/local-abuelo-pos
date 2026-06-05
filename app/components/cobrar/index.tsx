@@ -69,6 +69,7 @@ type Props = {
     tax: number,
     orderType: "servir" | "llevar" | "delivery",
     deliveryCost: number,
+    scheduledFor?: string,
   ) => void;
 };
 
@@ -114,6 +115,7 @@ export default function Cobrar({
   const [orderType,         setOrderType]         = useState<OrderType | null>(null);
   const [deliveryCost,      setDeliveryCost]      = useState(0);
   const [deliveryCostInput, setDeliveryCostInput] = useState("");
+  const [scheduledFor,      setScheduledFor]      = useState("");
 
   /** Relleno seleccionado por productId */
   const [selectedFilling, setSelectedFilling] = useState<Record<number, string>>({});
@@ -168,7 +170,6 @@ export default function Cobrar({
       } else {
         const ds = product.drinkSizes?.find((d) => d.key === sizeKey);
         if (ds) {
-          const currentQty = cart.find((e) => e.key === key)?.quantity ?? 0;
           const cap = getDrinkEffectiveCapacity(ds.stock);
           if (cap !== null) capped = Math.min(newQty, cap);
         }
@@ -279,7 +280,6 @@ export default function Cobrar({
 
   const handleSaveOrder = (name: string, note?: string) => {
     if (activeOrderId) {
-      // Actualizar el pedido activo existente
       setSavedOrders((prev) =>
         prev.map((o) =>
           o.id === activeOrderId
@@ -288,7 +288,6 @@ export default function Cobrar({
         )
       );
     } else {
-      // Crear nuevo pedido guardado
       const newOrder = createSavedOrder(name, cart, discount, taxEnabled, taxRate, note);
       setSavedOrders((prev) => [newOrder, ...prev]);
       setActiveOrderId(newOrder.id);
@@ -363,6 +362,7 @@ export default function Cobrar({
       taxEnabled ? taxAmount : 0,
       orderType,
       orderType === "delivery" ? deliveryCost : 0,
+      scheduledFor || undefined,
     );
 
     // Si había un pedido activo, eliminarlo de guardados al cobrar
@@ -382,6 +382,7 @@ export default function Cobrar({
     setOrderType(null);
     setDeliveryCost(0);
     setDeliveryCostInput("");
+    setScheduledFor("");
   };
 
   const clearCart = () => {
@@ -393,6 +394,7 @@ export default function Cobrar({
     setOrderType(null);
     setDeliveryCost(0);
     setDeliveryCostInput("");
+    setScheduledFor("");
     setActiveOrderId(null);
   };
 
@@ -521,9 +523,9 @@ export default function Cobrar({
           setOrderType(null);
           setDeliveryCost(0);
           setDeliveryCostInput("");
+          setScheduledFor("");
           setShowPaymentModal(true);
         }}
-        // Nuevas props para guardar pedido
         hasItemsInCart={cartHasItems}
         activeOrderId={activeOrderId}
         onSaveOrder={() => setShowSaveModal(true)}
@@ -542,11 +544,15 @@ export default function Cobrar({
               setDeliveryCost(0);
               setDeliveryCostInput("");
             }
+            // Limpiar fecha si cambia a servir
+            if (type === "servir") setScheduledFor("");
           }}
           deliveryCost={deliveryCost}
           deliveryCostInput={deliveryCostInput}
           onChangeDeliveryCostInput={setDeliveryCostInput}
           onChangeDeliveryCost={setDeliveryCost}
+          scheduledFor={scheduledFor}
+          onChangeScheduledFor={setScheduledFor}
           selectedPayment={selectedPayment}
           onSelectPayment={setSelectedPayment}
           onCancel={() => setShowPaymentModal(false)}

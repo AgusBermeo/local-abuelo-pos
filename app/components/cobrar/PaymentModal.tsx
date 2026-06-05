@@ -1,7 +1,8 @@
 // app/components/cobrar/PaymentModal.tsx
 //
 // Modal de finalización de pedido: tipo de pedido (servir / llevar / delivery),
-// costo de envío (solo delivery) y método de pago.
+// costo de envío (solo delivery), fecha/hora de entrega (llevar y delivery)
+// y método de pago.
 
 import type { PaymentMethod } from "../../home-client";
 import type { OrderType } from "./types";
@@ -22,6 +23,10 @@ type Props = {
   onChangeDeliveryCostInput: (raw: string) => void;
   onChangeDeliveryCost: (v: number) => void;
 
+  /** ISO datetime-local string, vacío si no se ha fijado */
+  scheduledFor: string;
+  onChangeScheduledFor: (v: string) => void;
+
   selectedPayment: PaymentMethod | null;
   onSelectPayment: (method: PaymentMethod) => void;
 
@@ -41,6 +46,8 @@ export default function PaymentModal({
   deliveryCostInput,
   onChangeDeliveryCostInput,
   onChangeDeliveryCost,
+  scheduledFor,
+  onChangeScheduledFor,
   selectedPayment,
   onSelectPayment,
   onCancel,
@@ -113,7 +120,6 @@ export default function PaymentModal({
                     onChangeDeliveryCost(isNaN(v) || v < 0 ? 0 : v);
                   }}
                   placeholder="0.00"
-                  autoFocus
                   className="w-full pl-8 bg-amber-950/70 border-2 border-amber-800/70 focus:border-amber-500 rounded-xl py-2.5 pr-4 text-amber-100 text-sm placeholder:text-amber-800 focus:outline-none transition-colors"
                 />
               </div>
@@ -122,6 +128,36 @@ export default function PaymentModal({
                   Total con envío:{" "}
                   <span className="font-bold text-amber-400">
                     ${(afterDiscount + taxAmount + deliveryCost).toFixed(2)}
+                  </span>
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Fecha y hora de entrega (llevar o delivery) */}
+          {(orderType === "llevar" || orderType === "delivery") && (
+            <div className="flex flex-col gap-1.5 mt-1">
+              <label className="text-[10px] uppercase tracking-widest text-yellow-700">
+                Fecha y hora de entrega{" "}
+                <span className="text-amber-800 normal-case">(opcional)</span>
+              </label>
+              <input
+                type="datetime-local"
+                value={scheduledFor}
+                onChange={(e) => onChangeScheduledFor(e.target.value)}
+                className="w-full bg-amber-950/70 border-2 border-amber-800/70 focus:border-amber-500 rounded-xl px-4 py-2.5 text-amber-100 text-sm focus:outline-none transition-colors [color-scheme:dark]"
+              />
+              {scheduledFor && (
+                <p className="text-[10px] text-amber-600">
+                  Entrega programada:{" "}
+                  <span className="font-bold text-amber-400">
+                    {new Date(scheduledFor).toLocaleString("es-EC", {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </span>
                 </p>
               )}

@@ -1,7 +1,8 @@
 // app/components/ventas/SaleCard.tsx
 //
 // Tarjeta de una venta individual: cabecera, badges de estado/pago/tipo,
-// lista de ítems, desglose IVA + envío, y botones de acción.
+// lista de ítems, desglose IVA + envío, fecha de entrega programada
+// y botones de acción.
 
 import type { Sale, PaymentMethod } from "./types";
 import { PAYMENT_LABELS, ORDER_TYPE_LABELS, toLocalDateString, getItemEmoji } from "./types";
@@ -35,6 +36,67 @@ function TrashIcon() {
   );
 }
 
+// ── Helper: badge de entrega programada ───────────────────────────────────────
+
+function ScheduledBadge({ scheduledFor }: { scheduledFor: string }) {
+  const date      = new Date(scheduledFor);
+  const now       = new Date();
+  const diffMs    = date.getTime() - now.getTime();
+  const diffMins  = Math.round(diffMs / 60000);
+  const isOverdue = diffMs < 0;
+
+  const formatted = date.toLocaleString("es-EC", {
+    weekday: "short",
+    day:     "numeric",
+    month:   "short",
+    hour:    "2-digit",
+    minute:  "2-digit",
+  });
+
+  let countdown = "";
+  if (isOverdue) {
+    const absMins = Math.abs(diffMins);
+    if (absMins < 60)        countdown = `hace ${absMins} min`;
+    else if (absMins < 1440) countdown = `hace ${Math.floor(absMins / 60)}h`;
+    else                     countdown = `hace ${Math.floor(absMins / 1440)}d`;
+  } else {
+    if (diffMins < 60)        countdown = `en ${diffMins} min`;
+    else if (diffMins < 1440) countdown = `en ${Math.floor(diffMins / 60)}h`;
+    else                      countdown = `en ${Math.floor(diffMins / 1440)}d`;
+  }
+
+  return (
+    <div
+      className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
+        isOverdue
+          ? "bg-red-950/30 border-red-800"
+          : diffMins <= 30
+          ? "bg-orange-950/30 border-orange-800"
+          : "bg-teal-950/30 border-teal-900"
+      }`}
+    >
+      <span className="text-sm leading-none shrink-0">🕐</span>
+      <div className="flex flex-col min-w-0">
+        <span
+          className={`text-[10px] font-bold uppercase tracking-widest ${
+            isOverdue ? "text-red-400" : diffMins <= 30 ? "text-orange-400" : "text-teal-400"
+          }`}
+        >
+          {isOverdue ? "⚠ Vencido" : "Entrega programada"}
+        </span>
+        <span className="text-xs font-semibold text-amber-200">{formatted}</span>
+      </div>
+      <span
+        className={`ml-auto text-[10px] font-bold uppercase tracking-widest shrink-0 ${
+          isOverdue ? "text-red-500" : diffMins <= 30 ? "text-orange-400" : "text-teal-500"
+        }`}
+      >
+        {countdown}
+      </span>
+    </div>
+  );
+}
+
 // ── Componente ────────────────────────────────────────────────────────────────
 
 export default function SaleCard({
@@ -52,10 +114,22 @@ export default function SaleCard({
   const orderTypeInfo = sale.orderType ? ORDER_TYPE_LABELS[sale.orderType] : null;
   const hasDeliveryCost = typeof sale.deliveryCost === "number" && sale.deliveryCost > 0;
 
+  // Mostrar fecha de entrega solo en pedidos pendientes de llevar/delivery
+  const showScheduled =
+    !isDelivered &&
+    !!sale.scheduledFor &&
+    (sale.orderType === "llevar" || sale.orderType === "delivery");
+
   // Color del borde según antigüedad del pedido pendiente
   const cardBorder = isDelivered
     ? "bg-green-950/20 border-green-900"
     : (() => {
+        // Si hay entrega vencida, priorizar rojo
+        if (showScheduled && sale.scheduledFor) {
+          const diffMs = new Date(sale.scheduledFor).getTime() - Date.now();
+          if (diffMs < 0) return "bg-red-950/20 border-red-700";
+          if (diffMs < 30 * 60000) return "bg-orange-950 border-orange-700";
+        }
         const minutesAgo = (Date.now() - new Date(sale.date).getTime()) / 60000;
         if (minutesAgo > 1440) return "bg-red-950/20 border-red-700";
         if (minutesAgo > 720)  return "bg-orange-950 border-orange-700";
@@ -145,6 +219,13 @@ export default function SaleCard({
           </button>
         )}
       </div>
+
+      {/* ── Fecha de entrega programada (solo pendientes llevar/delivery) ── */}
+      {showScheduled && sale.scheduledFor && (
+        <div className="mb-3">
+          <ScheduledBadge scheduledFor={sale.scheduledFor} />
+        </div>
+      )}
 
       {/* ── Lista de ítems ── */}
       <div className="flex flex-col gap-1">

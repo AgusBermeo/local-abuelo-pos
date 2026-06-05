@@ -179,6 +179,8 @@ export type Sale = {
   tax?: number;
   orderType?: "servir" | "llevar" | "delivery";
   deliveryCost?: number;
+  /** Fecha/hora programada de entrega — solo llevar y delivery, optional */
+  scheduledFor?: string;
   deductions?: IngredientDeduction[];
   drinkDeductions?: DrinkDeduction[];
   foodVariantDeductions?: FoodVariantDeduction[];
@@ -258,9 +260,10 @@ export default function HomeClient({ session }: { session: SessionPayload | null
     drinkDeductions: DrinkDeduction[],
     tax: number = 0,
     orderType: "servir" | "llevar" | "delivery" = "servir",
-    deliveryCost: number = 0
+    deliveryCost: number = 0,
+    scheduledFor?: string,
   ) => {
-    const isServir = orderType === "servir" || orderType === "delivery";
+    const isServir = orderType === "servir";
     setSales((prev) => [
       {
         id: Date.now(),
@@ -272,6 +275,7 @@ export default function HomeClient({ session }: { session: SessionPayload | null
         tax,
         orderType,
         deliveryCost: orderType === "delivery" ? deliveryCost : undefined,
+        scheduledFor: scheduledFor || undefined,
         soldBy: session
           ? { userId: session.userId, displayName: session.displayName }
           : undefined,
@@ -350,7 +354,7 @@ export default function HomeClient({ session }: { session: SessionPayload | null
     }
     deliveredRef.current.add(id);
     const sale = sales.find((s) => s.id === id);
-    if (sale?.orderType === "llevar") {
+    if (sale?.orderType === "llevar" || sale?.orderType === "delivery") {
       if (sale.foodVariantDeductions?.length) applyFoodVariantDeductions(sale.foodVariantDeductions);
       if (sale.drinkDeductions?.length)       applyDrinkDeductions(sale.drinkDeductions);
     }

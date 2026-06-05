@@ -36,6 +36,9 @@ export const PAYMENT_OPTIONS: PaymentOption[] = [
 
 export type OrderType = "servir" | "llevar" | "delivery";
 
+/** Fecha/hora programada de entrega (solo llevar y delivery) */
+export type ScheduledFor = string; // ISO string
+
 export type OrderTypeOption = {
   value: OrderType;
   label: string;
