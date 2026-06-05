@@ -28,7 +28,6 @@ import MetodosPagoSection         from "./MetodosPagoSection";
 import VentasPorUsuario           from "./VentasPorUsuario";
 import HistorialSection           from "./HistorialSection";
 import VariantesSection           from "./VariantesSection";
-import ConsumoVariantesSection    from "./ConsumoVariantesSection";
 import IngresoInventarioSection   from "./IngresoInventarioSection";
 
 // ── Helper de filtrado de StockEntryLog por período ───────────────────────────
@@ -285,11 +284,11 @@ export default function ReportePage() {
         <TopProductsSection productTotals={productTotals} />
 
         {/* Stock y consumo por variante */}
-        {hasFoodWithVariantStock && (
+        {/*hasFoodWithVariantStock && (
           <SectionCard title="📦 Stock y consumo por variante (Comida)">
             <ConsumoVariantesSection sales={periodSales} products={products} />
           </SectionCard>
-        )}
+        )*/}
 
         {/* Variantes vendidas + stock restante */}
         <SectionCard title="🥟 Variantes vendidas · stock actual">

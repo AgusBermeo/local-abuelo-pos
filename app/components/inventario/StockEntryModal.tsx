@@ -176,7 +176,6 @@ export default function StockEntryModal({ products, onClose, onConfirm, onLogEnt
 
         {/* Encabezado fijo */}
         <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-amber-800/60 shrink-0">
-          <span className="text-2xl leading-none">📥</span>
           <div className="flex flex-col flex-1 min-w-0">
             <h2 className="text-amber-400 font-bold text-base uppercase tracking-widest leading-tight">
               Ingreso de inventario
