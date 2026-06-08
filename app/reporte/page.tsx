@@ -29,6 +29,7 @@ import VentasPorUsuario           from "./VentasPorUsuario";
 import HistorialSection           from "./HistorialSection";
 import VariantesSection           from "./VariantesSection";
 import IngresoInventarioSection   from "./IngresoInventarioSection";
+import RecordsSection             from "./RecordsSection";
 
 // ── Helper de filtrado de StockEntryLog por período ───────────────────────────
 
@@ -231,6 +232,11 @@ export default function ReportePage() {
             sub={`${delivered} entregados`}
           />
         </div>
+
+        {/* Récords de ventas */}
+        <SectionCard title="🏅 Récords de ventas">
+          <RecordsSection sales={sales} />
+        </SectionCard>
 
         {/* Gráfico diario */}
         <SectionCard title="📈 Ventas por día">
