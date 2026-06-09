@@ -185,6 +185,7 @@ export type Sale = {
   drinkDeductions?: DrinkDeduction[];
   foodVariantDeductions?: FoodVariantDeduction[];
   soldBy?: { userId: string; displayName: string };
+  boxesCost?: number;
 };
 
 export default function HomeClient({ session }: { session: SessionPayload | null }) {
@@ -262,6 +263,7 @@ export default function HomeClient({ session }: { session: SessionPayload | null
     orderType: "servir" | "llevar" | "delivery" = "servir",
     deliveryCost: number = 0,
     scheduledFor?: string,
+    boxesCost: number = 0,
   ) => {
     // "servir" descuenta al cobrar; "llevar" y "delivery" esperan a marcar entregado
     const isServir = orderType === "servir";
@@ -282,6 +284,7 @@ export default function HomeClient({ session }: { session: SessionPayload | null
           : undefined,
         foodVariantDeductions: isServir ? undefined : foodVariantDeductions,
         drinkDeductions:       isServir ? undefined : drinkDeductions,
+        boxesCost: boxesCost > 0 ? boxesCost : undefined,
       },
       ...prev,
     ]);

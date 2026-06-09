@@ -1,8 +1,4 @@
 // app/components/cobrar/index.tsx
-//
-// Orquestador del módulo Cobrar.
-// Contiene únicamente estado, lógica de carrito y lógica de venta.
-// El renderizado está delegado a los subcomponentes de esta carpeta.
 
 "use client";
 
@@ -18,8 +14,8 @@ import {
   type PaymentMethod,
 } from "../../home-client";
 
-import type { CartEntry, OrderType } from "./types";
-import { makeCartKey, variantKeyStr } from "./types";
+import type { CartEntry, OrderType, BoxEntry } from "./types";
+import { makeCartKey, variantKeyStr, totalBoxesCost } from "./types";
 import type { SavedOrder } from "./savedOrders";
 import { createSavedOrder, updateSavedOrder } from "./savedOrders";
 
@@ -43,9 +39,7 @@ function getFoodVariantCap(
   return stock !== undefined ? stock : null;
 }
 
-function getDrinkEffectiveCapacity(
-  drinkStock: number,
-): number | null {
+function getDrinkEffectiveCapacity(drinkStock: number): number | null {
   if (drinkStock === 0) return null;
   return drinkStock;
 }
@@ -70,6 +64,7 @@ type Props = {
     orderType: "servir" | "llevar" | "delivery",
     deliveryCost: number,
     scheduledFor?: string,
+    boxesCost?: number,
   ) => void;
 };
 
@@ -116,18 +111,17 @@ export default function Cobrar({
   const [deliveryCost,      setDeliveryCost]      = useState(0);
   const [deliveryCostInput, setDeliveryCostInput] = useState("");
   const [scheduledFor,      setScheduledFor]      = useState("");
+  const [boxes,             setBoxes]             = useState<BoxEntry[]>([]);
 
-  /** Relleno seleccionado por productId */
   const [selectedFilling, setSelectedFilling] = useState<Record<number, string>>({});
 
   // ── Estado de pedidos guardados ──────────────────────────────────────────────
 
-  const [savedOrders,      setSavedOrders]      = useState<SavedOrder[]>(() => loadSavedOrders());
-  const [activeOrderId,    setActiveOrderId]    = useState<string | null>(null);
-  const [showSaveModal,    setShowSaveModal]    = useState(false);
-  const [showDrawer,       setShowDrawer]       = useState(false);
+  const [savedOrders,   setSavedOrders]   = useState<SavedOrder[]>(() => loadSavedOrders());
+  const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showDrawer,    setShowDrawer]    = useState(false);
 
-  // Persistir cada vez que cambian los pedidos guardados
   useEffect(() => {
     persistSavedOrders(savedOrders);
   }, [savedOrders]);
@@ -224,7 +218,6 @@ export default function Cobrar({
 
   // ── Totales derivados ────────────────────────────────────────────────────────
 
-  /** Cantidades totales por "productId::sizeKey" para el escalón de precio. */
   const sizeTotals: Record<string, number> = {};
   for (const entry of cart) {
     const k = `${entry.productId}::${entry.sizeKey}`;
@@ -247,7 +240,6 @@ export default function Cobrar({
     [cart, allProducts],
   );
 
-  /** Calcula el total de un carrito externo (para el drawer de pedidos guardados) */
   const getOrderTotal = useCallback(
     (orderCart: CartEntry[]): number => {
       return orderCart.reduce((sum, entry) => {
@@ -268,12 +260,22 @@ export default function Cobrar({
     [allProducts],
   );
 
+  // ── Empanadas en el carrito (nivel componente para pasarlo al modal) ──────────
+
+  const empanadasCount = cart
+    .filter((e) => {
+      const p = allProducts.find((x) => x.id === e.productId);
+      return p?.name.toLowerCase().includes("empanada");
+    })
+    .reduce((s, e) => s + e.quantity, 0);
+
   const subtotal       = cart.reduce((s, e) => s + getEntryPrice(e) * e.quantity, 0);
   const discountAmount = Math.min(discount, subtotal);
   const afterDiscount  = subtotal - discountAmount;
   const taxAmount      = taxEnabled ? afterDiscount * (taxRate / 100) : 0;
   const effectiveDeliveryCost = orderType === "delivery" ? deliveryCost : 0;
-  const total          = afterDiscount + taxAmount + effectiveDeliveryCost;
+  const boxesCost      = totalBoxesCost(boxes);
+  const total          = afterDiscount + taxAmount + effectiveDeliveryCost + boxesCost;
   const totalItems     = cart.reduce((s, e) => s + e.quantity, 0);
 
   // ── Guardar pedido ───────────────────────────────────────────────────────────
@@ -294,7 +296,6 @@ export default function Cobrar({
     }
   };
 
-  /** Carga un pedido guardado al carrito activo */
   const handleLoadOrder = (order: SavedOrder) => {
     setCart(order.cart);
     setDiscount(order.discount);
@@ -306,7 +307,6 @@ export default function Cobrar({
     setSelectedFilling({});
   };
 
-  /** Elimina un pedido guardado */
   const handleDeleteSavedOrder = (id: string) => {
     setSavedOrders((prev) => prev.filter((o) => o.id !== id));
     if (activeOrderId === id) setActiveOrderId(null);
@@ -363,9 +363,9 @@ export default function Cobrar({
       orderType,
       orderType === "delivery" ? deliveryCost : 0,
       scheduledFor || undefined,
+      boxesCost,
     );
 
-    // Si había un pedido activo, eliminarlo de guardados al cobrar
     if (activeOrderId) {
       setSavedOrders((prev) => prev.filter((o) => o.id !== activeOrderId));
       setActiveOrderId(null);
@@ -383,6 +383,7 @@ export default function Cobrar({
     setDeliveryCost(0);
     setDeliveryCostInput("");
     setScheduledFor("");
+    setBoxes([]);
   };
 
   const clearCart = () => {
@@ -396,6 +397,7 @@ export default function Cobrar({
     setDeliveryCostInput("");
     setScheduledFor("");
     setActiveOrderId(null);
+    setBoxes([]);
   };
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -407,7 +409,6 @@ export default function Cobrar({
   return (
     <div className="flex flex-col gap-4 w-full max-w-4xl mx-auto">
 
-      {/* ── Banner de pedido activo ── */}
       {activeOrder && (
         <div className="flex items-center gap-3 bg-amber-900/30 border-2 border-amber-600 rounded-xl px-4 py-3">
           <span className="text-base leading-none shrink-0">📋</span>
@@ -420,7 +421,7 @@ export default function Cobrar({
             )}
           </div>
           <button
-            onClick={() => { setActiveOrderId(null); }}
+            onClick={() => setActiveOrderId(null)}
             className="text-[10px] uppercase tracking-widest font-bold text-amber-700 hover:text-amber-500 border border-amber-800 hover:border-amber-600 rounded-lg px-2.5 py-1 cursor-pointer transition-colors shrink-0"
           >
             Desanclar
@@ -428,7 +429,6 @@ export default function Cobrar({
         </div>
       )}
 
-      {/* ── Botón de pedidos guardados (top bar) ── */}
       <div className="flex justify-end">
         <button
           onClick={() => setShowDrawer(true)}
@@ -446,7 +446,6 @@ export default function Cobrar({
         </button>
       </div>
 
-      {/* ── Comida ── */}
       {foodProducts.length > 0 && (
         <>
           <h3 className="uppercase text-amber-500 font-bold text-sm">Comida</h3>
@@ -470,7 +469,6 @@ export default function Cobrar({
         </>
       )}
 
-      {/* ── Bebidas ── */}
       {drinkProducts.length > 0 && (
         <>
           <h3 className="uppercase text-amber-500 font-bold text-sm">Bebidas</h3>
@@ -489,7 +487,6 @@ export default function Cobrar({
         </>
       )}
 
-      {/* ── Resumen del carrito ── */}
       <CartSummary
         cart={cart}
         allProducts={allProducts}
@@ -512,6 +509,7 @@ export default function Cobrar({
         onChangeTaxRateInput={setTaxRateInput}
         onChangeTaxRate={setTaxRate}
         effectiveDeliveryCost={effectiveDeliveryCost}
+        boxesCost={boxesCost}
         subtotal={subtotal}
         total={total}
         onDecrement={decrement}
@@ -531,7 +529,6 @@ export default function Cobrar({
         onSaveOrder={() => setShowSaveModal(true)}
       />
 
-      {/* ── Modal de pago ── */}
       {showPaymentModal && (
         <PaymentModal
           total={total}
@@ -544,7 +541,6 @@ export default function Cobrar({
               setDeliveryCost(0);
               setDeliveryCostInput("");
             }
-            // Limpiar fecha si cambia a servir
             if (type === "servir") setScheduledFor("");
           }}
           deliveryCost={deliveryCost}
@@ -557,10 +553,12 @@ export default function Cobrar({
           onSelectPayment={setSelectedPayment}
           onCancel={() => setShowPaymentModal(false)}
           onConfirm={confirmPayment}
+          empanadasCount={empanadasCount}
+          boxes={boxes}
+          onChangeBoxes={setBoxes}
         />
       )}
 
-      {/* ── Modal guardar pedido ── */}
       {showSaveModal && (
         <SaveOrderModal
           existingName={activeOrder?.name}
@@ -569,7 +567,6 @@ export default function Cobrar({
         />
       )}
 
-      {/* ── Drawer de pedidos guardados ── */}
       {showDrawer && (
         <SavedOrdersDrawer
           orders={savedOrders}
@@ -581,19 +578,17 @@ export default function Cobrar({
         />
       )}
 
-      {/* ── Barra flotante ── */}
       <FloatingTotalBar
         visible={showFloatingBar}
         totalItems={totalItems}
         subtotal={subtotal}
         total={total}
-        hasModifiers={discount > 0 || taxEnabled || effectiveDeliveryCost > 0}
+        hasModifiers={discount > 0 || taxEnabled || effectiveDeliveryCost > 0 || boxesCost > 0}
         onScrollToTotal={() =>
           totalBlockRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
         }
       />
 
-      {/* Espaciador para que la barra flotante no tape el contenido */}
       {showFloatingBar && <div className="h-20" />}
     </div>
   );

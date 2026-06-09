@@ -54,6 +54,7 @@ type Props = {
 
   // Delivery
   effectiveDeliveryCost: number;
+  boxesCost: number;
 
   // Totales
   subtotal: number;
@@ -93,6 +94,7 @@ export default function CartSummary({
   onChangeTaxRateInput,
   onChangeTaxRate,
   effectiveDeliveryCost,
+  boxesCost,
   subtotal,
   total,
   onDecrement,
@@ -311,6 +313,12 @@ export default function CartSummary({
           <div className="flex justify-between text-sm text-teal-400">
             <span>🛵 Envío</span>
             <span>+${effectiveDeliveryCost.toFixed(2)}</span>
+          </div>
+        )}
+        {boxesCost > 0 && (
+          <div className="flex justify-between text-sm text-orange-400">
+            <span>📦 Cajas</span>
+            <span>+${boxesCost.toFixed(2)}</span>
           </div>
         )}
         <div className="flex justify-between items-center border-t border-amber-800/40 pt-1 mt-0.5">
