@@ -22,6 +22,7 @@ export type Sale = {
   tax?: number;
   orderType?: "servir" | "llevar" | "delivery";
   deliveryCost?: number;
+  boxesCost?: number;
   /** Fecha/hora programada de entrega (ISO string) — solo llevar y delivery */
   scheduledFor?: string;
   soldBy?: { userId: string; displayName: string };

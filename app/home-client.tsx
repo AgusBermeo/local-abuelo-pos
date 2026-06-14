@@ -37,7 +37,6 @@ export type Product = {
 };
 
 // ── StockEntryLog ─────────────────────────────────────────────────────────────
-/** Registro de un ingreso de inventario (una fila por variante). */
 export type StockEntryLog = {
   id: number;
   date: Date;
@@ -102,8 +101,8 @@ export function getFoodVariantStock(product: Product, variantKey: string): numbe
 }
 
 // ── Deduction types ───────────────────────────────────────────────────────────
-export type IngredientDeduction = { ingredientId: string; quantity: number };
-export type DrinkDeduction      = { productId: number; drinkSizeKey: string; quantity: number };
+export type IngredientDeduction  = { ingredientId: string; quantity: number };
+export type DrinkDeduction       = { productId: number; drinkSizeKey: string; quantity: number };
 export type FoodVariantDeduction = { productId: number; variantKey: string; quantity: number };
 
 // ── Default products ──────────────────────────────────────────────────────────
@@ -112,7 +111,7 @@ const INITIAL_PRODUCTS: Product[] = [
     id: 1,
     name: "Empanada",
     category: "Comida",
-    sizeLabels:   { grande: "Grande", normal: "Normal", bocadito: "Bocadito" },
+    sizeLabels:    { grande: "Grande", normal: "Normal", bocadito: "Bocadito" },
     fillingLabels: { carne: "Carne", pollo: "Pollo" },
     tieredPrices: {
       grande:   [
@@ -170,7 +169,7 @@ const INITIAL_PRODUCTS: Product[] = [
   },
 ];
 
-export type OrderItem    = { name: string; quantity: number; price: number };
+export type OrderItem     = { name: string; quantity: number; price: number };
 export type PaymentMethod = "efectivo" | "transferencia" | "deuna";
 
 export type Sale = {
@@ -179,19 +178,18 @@ export type Sale = {
   tax?: number;
   orderType?: "servir" | "llevar" | "delivery";
   deliveryCost?: number;
-  /** Fecha/hora programada de entrega — solo llevar y delivery, optional */
+  boxesCost?: number;
   scheduledFor?: string;
   deductions?: IngredientDeduction[];
   drinkDeductions?: DrinkDeduction[];
   foodVariantDeductions?: FoodVariantDeduction[];
   soldBy?: { userId: string; displayName: string };
-  boxesCost?: number;
 };
 
 export default function HomeClient({ session }: { session: SessionPayload | null }) {
-  const [products,     setProducts]     = useLocalStorage<Product[]>      ("abuelo-products",     INITIAL_PRODUCTS);
-  const [ingredients,  setIngredients]  = useLocalStorage<Ingredient[]>   ("abuelo-ingredients",  []);
-  const [sales,        setSales]        = useLocalStorage<Sale[]>         ("abuelo-sales",        []);
+  const [products,     setProducts]     = useLocalStorage<Product[]>      ("abuelo-products",      INITIAL_PRODUCTS);
+  const [ingredients,  setIngredients]  = useLocalStorage<Ingredient[]>   ("abuelo-ingredients",   []);
+  const [sales,        setSales]        = useLocalStorage<Sale[]>         ("abuelo-sales",         []);
   const [stockEntries, setStockEntries] = useLocalStorage<StockEntryLog[]>("abuelo-stock-entries", []);
   const [activeTab,    setActiveTab]    = useState(0);
 
@@ -265,7 +263,6 @@ export default function HomeClient({ session }: { session: SessionPayload | null
     scheduledFor?: string,
     boxesCost: number = 0,
   ) => {
-    // "servir" descuenta al cobrar; "llevar" y "delivery" esperan a marcar entregado
     const isServir = orderType === "servir";
     setSales((prev) => [
       {
@@ -278,13 +275,13 @@ export default function HomeClient({ session }: { session: SessionPayload | null
         tax,
         orderType,
         deliveryCost: orderType === "delivery" ? deliveryCost : undefined,
+        boxesCost: boxesCost > 0 ? boxesCost : undefined,
         scheduledFor: scheduledFor || undefined,
         soldBy: session
           ? { userId: session.userId, displayName: session.displayName }
           : undefined,
         foodVariantDeductions: isServir ? undefined : foodVariantDeductions,
         drinkDeductions:       isServir ? undefined : drinkDeductions,
-        boxesCost: boxesCost > 0 ? boxesCost : undefined,
       },
       ...prev,
     ]);
@@ -296,9 +293,7 @@ export default function HomeClient({ session }: { session: SessionPayload | null
 
   // ── Stock entry log ───────────────────────────────────────────────────────
 
-  const addStockEntries = (
-    entries: Omit<StockEntryLog, "id" | "date">[],
-  ) => {
+  const addStockEntries = (entries: Omit<StockEntryLog, "id" | "date">[]) => {
     const now = new Date();
     setStockEntries((prev) => [
       ...entries.map((e) => ({
@@ -345,19 +340,14 @@ export default function HomeClient({ session }: { session: SessionPayload | null
 
   const deleteSale = (id: number) => setSales((prev) => prev.filter((s) => s.id !== id));
 
-  /**
-   * Verifica que haya stock suficiente para aplicar las deducciones de una venta.
-   * Devuelve un mensaje de error descriptivo, o null si todo está bien.
-   */
   const checkStockForSale = (sale: Sale): string | null => {
     const errors: string[] = [];
 
-    // Comida: variantStock
     for (const ded of sale.foodVariantDeductions ?? []) {
       const product = products.find((p) => p.id === ded.productId);
       if (!product) continue;
       const current = product.variantStock?.[ded.variantKey] ?? 0;
-      if (current === 0) continue; // 0 = sin seguimiento, no bloqueamos
+      if (current === 0) continue;
       if (current < ded.quantity) {
         const parts = ded.variantKey.split("-");
         const sizeLabel = product.sizeLabels?.[parts[0]] ?? parts[0];
@@ -369,12 +359,11 @@ export default function HomeClient({ session }: { session: SessionPayload | null
       }
     }
 
-    // Bebidas: drinkSizes stock
     for (const ded of sale.drinkDeductions ?? []) {
       const product = products.find((p) => p.id === ded.productId);
       if (!product || product.category !== "Bebida") continue;
       const ds = product.drinkSizes?.find((d) => d.key === ded.drinkSizeKey);
-      if (!ds || ds.stock === 0) continue; // 0 = sin seguimiento
+      if (!ds || ds.stock === 0) continue;
       if (ds.stock < ded.quantity) {
         errors.push(`${product.name} ${ds.label}: stock ${ds.stock}, necesita ${ded.quantity}`);
       }
@@ -384,11 +373,6 @@ export default function HomeClient({ session }: { session: SessionPayload | null
     return errors.join("\n");
   };
 
-  /**
-   * Marca una venta como entregada.
-   * Para llevar y delivery verifica stock antes de descontar.
-   * Devuelve null si OK, o un string con el error si no hay stock suficiente.
-   */
   const markDelivered = (id: number): string | null => {
     if (deliveredRef.current.has(id)) {
       setSales((prev) =>

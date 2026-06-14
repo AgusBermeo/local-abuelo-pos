@@ -29,10 +29,7 @@ function SaveIcon() {
 type Props = {
   cart: CartEntry[];
   allProducts: Product[];
-  /** Referencia para el Intersection Observer del bloque de totales. */
   totalBlockRef: React.RefObject<HTMLDivElement | null>;
-
-  /** Precio unitario ya calculado (con escalones) para una entrada del carrito. */
   getEntryPrice: (entry: CartEntry) => number;
 
   // Descuento
@@ -54,6 +51,8 @@ type Props = {
 
   // Delivery
   effectiveDeliveryCost: number;
+
+  // Cajas
   boxesCost: number;
 
   // Totales
@@ -291,7 +290,7 @@ export default function CartSummary({
 
       {/* Bloque de totales (observado para la barra flotante) */}
       <div ref={totalBlockRef} className="mt-4 flex flex-col gap-1">
-        {(discount > 0 || taxEnabled || effectiveDeliveryCost > 0) && (
+        {(discount > 0 || taxEnabled || effectiveDeliveryCost > 0 || boxesCost > 0) && (
           <div className="flex justify-between text-sm text-amber-700">
             <span>Subtotal</span>
             <span>${subtotal.toFixed(2)}</span>
@@ -330,7 +329,6 @@ export default function CartSummary({
       {/* Acciones */}
       {cart.length > 0 && (
         <div className="flex flex-col gap-2 mt-4">
-          {/* Fila superior: Cancelar + Guardar */}
           <div className="flex gap-2">
             <button
               onClick={onClearCart}
@@ -362,9 +360,6 @@ export default function CartSummary({
               Cobrar ${total.toFixed(2)}
             </button>
           </div>
-
-          {/* Fila inferior: Cobrar */}
-          
         </div>
       )}
     </div>

@@ -1,7 +1,7 @@
 // app/components/ventas/SaleCard.tsx
 //
 // Tarjeta de una venta individual: cabecera, badges de estado/pago/tipo,
-// lista de ítems, desglose IVA + envío, fecha de entrega programada
+// lista de ítems, desglose IVA + envío + cajas, fecha de entrega programada
 // y botones de acción.
 
 import type { Sale, PaymentMethod } from "./types";
@@ -107,24 +107,22 @@ export default function SaleCard({
   onOpenEdit,
   onOpenDelete,
 }: Props) {
-  const isDelivered = sale.status === "delivered";
-  const payment     = sale.paymentMethod ? PAYMENT_LABELS[sale.paymentMethod] : null;
-  const hasTax      = typeof sale.tax === "number" && sale.tax > 0;
+  const isDelivered     = sale.status === "delivered";
+  const payment         = sale.paymentMethod ? PAYMENT_LABELS[sale.paymentMethod] : null;
+  const hasTax          = typeof sale.tax === "number" && sale.tax > 0;
   const subtotalBeforeTax = hasTax ? sale.total - sale.tax! : null;
-  const orderTypeInfo = sale.orderType ? ORDER_TYPE_LABELS[sale.orderType] : null;
+  const orderTypeInfo   = sale.orderType ? ORDER_TYPE_LABELS[sale.orderType] : null;
   const hasDeliveryCost = typeof sale.deliveryCost === "number" && sale.deliveryCost > 0;
+  const hasBoxesCost    = typeof sale.boxesCost === "number" && sale.boxesCost > 0;
 
-  // Mostrar fecha de entrega solo en pedidos pendientes de llevar/delivery
   const showScheduled =
     !isDelivered &&
     !!sale.scheduledFor &&
     (sale.orderType === "llevar" || sale.orderType === "delivery");
 
-  // Color del borde según antigüedad del pedido pendiente
   const cardBorder = isDelivered
     ? "bg-green-950/20 border-green-900"
     : (() => {
-        // Si hay entrega vencida, priorizar rojo
         if (showScheduled && sale.scheduledFor) {
           const diffMs = new Date(sale.scheduledFor).getTime() - Date.now();
           if (diffMs < 0) return "bg-red-950/20 border-red-700";
@@ -239,8 +237,8 @@ export default function SaleCard({
         ))}
       </div>
 
-      {/* ── Desglose IVA + envío ── */}
-      {(hasTax || hasDeliveryCost) && (
+      {/* ── Desglose IVA + envío + cajas ── */}
+      {(hasTax || hasDeliveryCost || hasBoxesCost) && (
         <div className="mt-2 pt-2 border-t border-amber-800/40 flex flex-col gap-0.5">
           {hasTax && (
             <>
@@ -258,6 +256,12 @@ export default function SaleCard({
             <div className="flex justify-between text-xs text-teal-400">
               <span>🛵 Envío</span>
               <span>+${sale.deliveryCost!.toFixed(2)}</span>
+            </div>
+          )}
+          {hasBoxesCost && (
+            <div className="flex justify-between text-xs text-orange-400">
+              <span>📦 Cajas</span>
+              <span>+${sale.boxesCost!.toFixed(2)}</span>
             </div>
           )}
           <div className="flex justify-between text-xs font-bold text-amber-400 pt-0.5">
